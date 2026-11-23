@@ -13,8 +13,8 @@ https://jengdekjfrizdypysjef.supabase.co
 In the Supabase Dashboard for this project:
 
 1. Open **Authentication** → **Sign In / Providers**.
-2. Enable **Anonymous sign-ins**.
-3. Enable the **Email** provider so an anonymous profile can later be linked to an email and password.
+2. Enable **Anonymous sign-ins** (this is required for the first-launch account creation used by the app).
+3. Ensure the **Email** provider is enabled so an anonymous profile can later be linked to an email and password.
 4. Save the settings.
 
 SONIUM creates an anonymous authenticated user on first launch. The user should link that account to an email/password from the Account recovery panel before changing phones or uninstalling the app.
@@ -25,6 +25,7 @@ Open **SQL Editor** → **New query**. Run these repository files in this exact 
 
 1. `supabase/migrations/0001_initial_schema.sql`
 2. `supabase/migrations/0002_security_hardening.sql`
+3. `supabase/migrations/0003_function_privileges.sql`
 
 Repository links:
 
@@ -37,17 +38,9 @@ The migrations create profiles, crews, members, the task catalogue, completions,
 
 ## 3. Add the public key to GitHub Actions
 
-The Android workflow already contains the Supabase project URL. It needs the project's **Publishable key** to embed the public client configuration in the APK.
+The Android workflow now contains this project's **Publishable key** and project URL. Publishable keys are specifically designed to be embedded in client apps; security is enforced by RLS policies. No GitHub secret is required for the public client key. Never place a Supabase Secret key, legacy `service_role` key, database password, or Resend secret in the Android app or GitHub source.
 
-1. In Supabase open **Project Settings** → **API Keys**.
-2. Copy the **Publishable key** (it starts with `sb_publishable_`). Do not copy the Secret key.
-3. Open the GitHub repository **Settings** → **Secrets and variables** → **Actions**.
-4. Choose **New repository secret**.
-5. Name it exactly `SUPABASE_PUBLISHABLE_KEY` and paste the Publishable key as its value.
-
-The workflow reads that secret at build time. The Publishable key is intended for a mobile app, but the database must still be protected by the supplied RLS policies. Never place a Supabase Secret key, legacy `service_role` key, database password, or Resend secret in the Android app or GitHub source.
-
-After adding the repository secret, run the **SONIUM Android APK** workflow from the repository's **Actions** tab (or push a new commit to `main`). The resulting APK will be configured for this project.
+A new push to `main` automatically starts a connected Android build. You can also start the **SONIUM Android APK** workflow from the repository's **Actions** tab.
 
 ## 4. Make the app owner an administrator
 
