@@ -19,7 +19,7 @@ In the Supabase Dashboard for this project:
 
 SONIUM creates an anonymous authenticated user on first launch. The user should link that account to an email/password from the Account recovery panel before changing phones or uninstalling the app.
 
-## 2. Apply the database migrations
+## 2. Database migrations (already applied to this project)
 
 Open **SQL Editor** → **New query**. Run these repository files in this exact order, one file at a time:
 
@@ -32,13 +32,13 @@ Repository links:
 - [Initial schema](https://github.com/Yasso209/SOn--SONIUM/blob/main/supabase/migrations/0001_initial_schema.sql)
 - [Security hardening](https://github.com/Yasso209/SOn--SONIUM/blob/main/supabase/migrations/0002_security_hardening.sql)
 
-Run each migration once on this new project. Do not run the initial schema twice: it creates tables, policies, triggers, and Realtime publication entries.
+These migrations have already been applied to the configured project `jengdekjfrizdypysjef`. Do not run them again on that live project. The list is provided for audit/recovery or for setting up a separate clean project.
 
-The migrations create profiles, crews, members, the task catalogue, completions, shared crew tasks/proofs, messages, reports, admin RPCs, a private `proofs` Storage bucket, RLS policies, and Realtime publication membership.
+The migrations create profiles, crews, members, the task catalogue, completions, shared crew tasks/proofs, messages, reports, admin RPCs, a private `proofs` Storage bucket, RLS policies, and Realtime publication membership. Migration 0003 restricts function and table privileges, 0004 moves authorization helpers into the non-exposed `private` schema, and 0005 limits proof uploads to JPEG/PNG/WebP up to 10 MiB.
 
 ## 3. Add the public key to GitHub Actions
 
-The Android workflow now contains this project's **Publishable key** and project URL. Publishable keys are specifically designed to be embedded in client apps; security is enforced by RLS policies. No GitHub secret is required for the public client key. Never place a Supabase Secret key, legacy `service_role` key, database password, or Resend secret in the Android app or GitHub source.
+The Android workflow now contains this project's **Publishable key** and project URL. Publishable keys are designed to be embedded in client apps; security is enforced by RLS policies. No GitHub secret is required for the public client key. Never place a Supabase Secret key, legacy `service_role` key, database password, or Resend secret in the Android app or GitHub source.
 
 A new push to `main` automatically starts a connected Android build. You can also start the **SONIUM Android APK** workflow from the repository's **Actions** tab.
 
