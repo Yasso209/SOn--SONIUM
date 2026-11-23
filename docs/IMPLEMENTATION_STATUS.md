@@ -7,19 +7,29 @@
 - Crew create/join, multi-crew selection, leave, rename and penalty selection.
 - Current-day task completions and the five-prayer checklist backed by `completions` when a crew is connected.
 - Crew member list, leaderboard, Realtime crew chat and emoji stickers.
+- Shared Crew Tasks with camera capture, private Storage upload and signed proof display are integrated in the app source.
+- Member reporting, report email invocation and owner-only moderation controls (ban/unban, report review, message removal, crew/member moderation) are integrated in the app source and SQL.
 - Local daily reminder notification.
 - EAS internal Android APK profile and Windows build helper.
 - Supabase schema/RLS migrations and report-email Edge Function source.
+- A manual release QA checklist is available at `docs/RELEASE_QA_CHECKLIST.md`.
 
-## Not yet implemented or release-verified in the current GitHub app screen
+## Not yet implemented or release-verified
 - The full original HTML prototype is not yet committed in this repository; the native screen is a reduced implementation pass and still needs a detailed visual/interaction comparison.
-- Shared Crew Tasks with camera capture, private Storage upload and signed proof display are integrated in the app source, but have not been verified against a live Supabase project/device.
-- Member reporting, report email invocation and owner-only moderation controls (ban/unban, report review, message removal, crew/member moderation) are integrated in the app source and SQL, but have not been verified against a live backend.
+- Shared proof upload, member reporting and owner moderation have not been verified against a live Supabase project/device.
 - Remote push notifications (chat/task events), private 1:1 chat, Arabic localization and complete historical day-by-day statistics are incomplete.
-- Dependencies could not be installed in the original build environment because package registry access timed out. A full Expo/TypeScript build and device test have not been completed.
+- No dependency lockfile is committed yet.
+- A full Expo/TypeScript check, Expo Doctor run and physical-device QA have not been completed.
 - No live Supabase project has been provisioned or migrated. SQL has not been run against a live database.
 - The report email Edge Function needs deployment and Resend secrets/domain verification.
 - EAS cloud APK build requires the owner's Expo account and signing/build setup. No APK has been generated.
 
-## Release gate
-Do not distribute this build as a finished production app until the missing app features are restored, migrations/RLS are reviewed and tested, device QA is completed, and a signed APK is successfully produced.
+## Next execution order
+1. Install dependencies and create/commit a lockfile.
+2. Run TypeScript and Expo Doctor checks; fix code/config errors.
+3. Provision a disposable Supabase project, apply both migrations, and test RLS/storage/admin paths.
+4. Run the full manual checklist in `docs/RELEASE_QA_CHECKLIST.md` on Android.
+5. Compare native screens against the original HTML prototype and close visual/interaction gaps.
+6. Produce and install an EAS internal APK; record the exact build artifact and test results.
+
+Do not distribute this build as a finished production app until migrations/RLS are reviewed and tested, device QA is completed, privacy requirements are addressed, and a signed APK is successfully produced.
