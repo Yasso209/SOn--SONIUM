@@ -69,7 +69,7 @@ export default function App(){
  const totalPoints=useMemo(()=>TASKS.filter(t=>done.includes(t.id)).reduce((s,t)=>s+t.points,0),[done]);
  const online=Boolean(isSupabaseConfigured&&userId);
  const toast=(s:string)=>{setNotice(s);setTimeout(()=>setNotice(''),2500);};
- const saveLocal=async(patch:Record<string,unknown>)=>{const raw=await AsyncStorage.getItem(STORE);await AsyncStorage.setItem(STORE,JSON.stringify({...raw?JSON.parse(raw):{},...patch}));};
+ const saveLocal=async(patch:Record<string,unknown>)=>{const raw=await AsyncStorage.getItem(STORE);await AsyncStorage.setItem(STORE,JSON.stringify({...(raw ? JSON.parse(raw) : {}), ...patch}));};
 
  useEffect(()=>{let active=true;(async()=>{try{const raw=await AsyncStorage.getItem(STORE);if(raw&&active){const s=JSON.parse(raw);setName(s.name||'Player');setAvatar(s.avatar||null);setDone(s.done||[]);setPrayers(s.prayers||[]);setThemeMode(s.themeMode||'dark');setReminder(Boolean(s.reminder));}if(supabase){const {data:sess}=await supabase.auth.getSession();let uid=sess.session?.user.id;if(!uid){const {data,error}=await supabase.auth.signInAnonymously();if(error)throw error;uid=data.user?.id;}if(uid&&active){setUserId(uid);const {data:p}=await supabase.from('profiles').select('name').eq('id',uid).maybeSingle();if(p?.name)setName(p.name);}}}catch(e:any){toast(e?.message||'Could not start SONIUM');}finally{if(active)setLoading(false);}})();return()=>{active=false;};},[]);
  useEffect(()=>{saveLocal({name,avatar,done,prayers,themeMode,reminder}).catch(()=>{});},[name,avatar,done,prayers,themeMode,reminder]);
