@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "SONIUM",
+    "slug": "sonium",
+    "scheme": "sonium",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "plugins": [
+      "expo-router",
+      ["expo-image-picker", {
+        "photosPermission": "SONIUM needs photo access so you can set your profile picture and share crew task proof.",
+        "cameraPermission": "SONIUM uses your camera to capture proof photos for shared crew tasks."
+      }],
+      ["expo-notifications", {
+        "icon": "./assets/notification-icon.png",
+        "color": "#c8f04a",
+        "defaultChannel": "sonium-reminders"
+      }]
+    ],
+    "android": {
+      "package": "com.yassinmohamed.sonium",
+      "versionCode": 1,
+      "permissions": ["POST_NOTIFICATIONS", "VIBRATE", "RECEIVE_BOOT_COMPLETED"],
+      "adaptiveIcon": {"foregroundImage": "./assets/adaptive-icon.png", "backgroundColor": "#0a0b09"}
+    },
+    "experiments": {"typedRoutes": true},
+    "icon": "./assets/icon.png",
+    "splash": {"image": "./assets/splash.png", "resizeMode": "contain", "backgroundColor": "#0a0b09"}
+  }
+}
