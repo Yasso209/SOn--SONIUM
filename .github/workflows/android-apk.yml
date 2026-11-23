@@ -48,14 +48,42 @@ jobs:
       - name: Generate native Android project
         run: npx expo prebuild --platform android --non-interactive
 
-      - name: Build debug APK
+      - name: Build release APK with embedded JavaScript bundle
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleRelease --no-daemon
+
+      - name: Verify embedded bundle and sign installable APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find android/app/build/outputs/apk/release -maxdepth 1 -type f -name '*.apk' | sort | head -n 1)"
+          test -n "$APK"
+          unzip -l "$APK" | grep -Eq 'assets/index\.android\.bundle$'
+
+          mkdir -p "$HOME/.android"
+          if [ ! -f "$HOME/.android/debug.keystore" ]; then
+            keytool -genkeypair -v \
+              -storepass android -keypass android \
+              -keystore "$HOME/.android/debug.keystore" \
+              -alias androiddebugkey -keyalg RSA -keysize 2048 \
+              -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
+
+          BUILD_TOOLS="$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n 1)"
+          "$BUILD_TOOLS/zipalign" -f 4 "$APK" "$RUNNER_TEMP/SONIUM-aligned.apk"
+          "$BUILD_TOOLS/apksigner" sign \
+            --ks "$HOME/.android/debug.keystore" \
+            --ks-key-alias androiddebugkey \
+            --ks-pass pass:android --key-pass pass:android \
+            --out "$GITHUB_WORKSPACE/SONIUM.apk" \
+            "$RUNNER_TEMP/SONIUM-aligned.apk"
+          "$BUILD_TOOLS/apksigner" verify --verbose "$GITHUB_WORKSPACE/SONIUM.apk"
+          unzip -l "$GITHUB_WORKSPACE/SONIUM.apk" | grep 'assets/index.android.bundle'
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: SONIUM-android-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: SONIUM-release-apk
+          path: SONIUM.apk
           if-no-files-found: error
           retention-days: 14
