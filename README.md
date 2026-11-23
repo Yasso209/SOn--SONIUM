@@ -20,6 +20,10 @@ The native app includes Home, Stats, Crew and Settings; daily tasks and the five
 
 The backend migrations define crew membership, tasks, completions, shared tasks/proofs, messages, reports, admin controls and RLS policies. The report Edge Function sends report metadata through Resend when configured.
 
+## Automated checks
+
+GitHub Actions runs the TypeScript check, Expo public configuration validation, and Expo Doctor on pushes and pull requests to `main`. See the **Actions** tab for the latest result. The repository currently does not include a dependency lockfile, so CI installs from `package.json` until a lockfile is committed.
+
 ## Important: not a release build yet
 
 This repository is an active development implementation, not a verified production release. No APK has been generated. No live Supabase project has been provisioned or migrated, and the SQL has not been tested against a live database. Dependencies and the native app have not completed an end-to-end build/device QA pass. Remote push notifications, complete proof-photo flow verification, historical day-by-day statistics, Arabic localization, private 1:1 chat, and final visual comparison with the original HTML prototype remain incomplete.
