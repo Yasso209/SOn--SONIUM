@@ -1,52 +1,48 @@
-# Connect SONIUM to the Supabase project
+# SONIUM — Supabase setup and live status
 
 Project reference: `jengdekjfrizdypysjef`
+Project URL: `https://jengdekjfrizdypysjef.supabase.co`
 
-Project URL (used by the Android build workflow):
+## Live backend status
 
-```text
-https://jengdekjfrizdypysjef.supabase.co
-```
+The production Supabase project is active and has migrations `0001` through `0008` applied.
 
-## 1. Enable the authentication providers
+The schema includes profiles, crews, memberships, the task catalogue, completions, shared crew tasks and proofs, messages, reports, and the owner-admin registry. RLS is enabled on exposed app tables. Crew messages are included in the `supabase_realtime` publication.
 
-In the Supabase Dashboard for this project:
+The `proofs` Storage bucket is private, limited to 10 MiB per object, and restricted to supported image formats. Its policies restrict reads to crew members and uploads to the submitting member.
 
-1. Open **Authentication** → **Sign In / Providers**.
-2. Enable **Anonymous sign-ins** (this is required for the first-launch account creation used by the app).
-3. Ensure the **Email** provider is enabled so an anonymous profile can later be linked to an email and password.
-4. Save the settings.
+The `notify-report` Edge Function is deployed and ACTIVE with JWT verification enabled. Reports are stored in the database even if email delivery is not configured. Optional email alerts require server-side Supabase function secrets:
+- `RESEND_API_KEY`
+- `REPORTS_EMAIL`
+- optionally `REPORTS_FROM`
 
-SONIUM creates an anonymous authenticated user on first launch. The user should link that account to an email/password from the Account recovery panel before changing phones or uninstalling the app.
+Never put a Resend key, Supabase Secret key, legacy `service_role` key, or database password in the mobile app or repository.
 
-## 2. Database migrations (already applied to this project)
+## Applied migrations
 
-Open **SQL Editor** → **New query**. Run these repository files in this exact order, one file at a time:
+Run these only on a separate clean project. They have already been applied to `jengdekjfrizdypysjef`; do not run them again on this live database.
 
-1. `supabase/migrations/0001_initial_schema.sql`
-2. `supabase/migrations/0002_security_hardening.sql`
-3. `supabase/migrations/0003_function_privileges.sql`
+1. `0001_initial_schema.sql`
+2. `0002_security_hardening.sql`
+3. `0003_function_privileges.sql`
+4. `0004_private_rls_helpers.sql`
+5. `0005_proof_storage_limits.sql`
+6. `0006_private_rpcs.sql`
+7. `0007_foreign_key_indexes.sql`
+8. `0008_rls_performance.sql`
 
-Repository links:
+## Authentication setting that must be checked in the dashboard
 
-- [Initial schema](https://github.com/Yasso209/SOn--SONIUM/blob/main/supabase/migrations/0001_initial_schema.sql)
-- [Security hardening](https://github.com/Yasso209/SOn--SONIUM/blob/main/supabase/migrations/0002_security_hardening.sql)
+SONIUM creates an anonymous authenticated user on first launch. In Supabase Dashboard → Authentication → Sign In / Providers, enable **Anonymous sign-ins**. Email/password is enabled by default for hosted projects; keep it enabled so a user can link their anonymous identity for account recovery.
 
-These migrations have already been applied to the configured project `jengdekjfrizdypysjef`. Do not run them again on that live project. The list is provided for audit/recovery or for setting up a separate clean project.
+Anonymous identities cannot be recovered after uninstalling or losing app data until the user links the identity to an email/password account.
 
-The migrations create profiles, crews, members, the task catalogue, completions, shared crew tasks/proofs, messages, reports, admin RPCs, a private `proofs` Storage bucket, RLS policies, and Realtime publication membership. Migration 0003 restricts function and table privileges, 0004 moves authorization helpers into the non-exposed `private` schema, and 0005 limits proof uploads to JPEG/PNG/WebP up to 10 MiB.
+## Owner-only admin bootstrap
 
-## 3. Add the public key to GitHub Actions
-
-The Android workflow now contains this project's **Publishable key** and project URL. Publishable keys are designed to be embedded in client apps; security is enforced by RLS policies. No GitHub secret is required for the public client key. Never place a Supabase Secret key, legacy `service_role` key, database password, or Resend secret in the Android app or GitHub source.
-
-A new push to `main` automatically starts a connected Android build. You can also start the **SONIUM Android APK** workflow from the repository's **Actions** tab.
-
-## 4. Make the app owner an administrator
-
-First install the connected APK and open SONIUM once so it creates the owner's anonymous account. In the app's **Settings → Account recovery**, link that same account to an email and password.
-
-Then in Supabase open **Authentication** → **Users**, copy the owner's User UID, and run this once in SQL Editor, replacing the placeholder:
+1. Install the connected APK and open SONIUM once.
+2. In Settings → Account recovery, link the owner's account to an email and password.
+3. In Supabase Dashboard → Authentication → Users, copy that owner's User UID.
+4. Run this once in SQL Editor, replacing the placeholder with the owner's own UID:
 
 ```sql
 insert into public.app_admins(user_id)
@@ -54,22 +50,20 @@ values ('OWNER_AUTH_USER_UUID')
 on conflict do nothing;
 ```
 
-Only add the app owner's own account. This enables the owner-only moderation dashboard; ordinary crew members do not receive admin privileges.
+Only grant this role to the app owner. The `app_admins` table intentionally has no direct client policy; admin checks are performed through restricted database functions.
 
-## 5. Report email alerts (optional)
+## Android build
 
-Reports are stored in the database. The optional `notify-report` Edge Function sends an email notification when it is deployed and its Resend email secrets are configured. Until then, the report record can still be reviewed in the owner dashboard, but email delivery is not available.
+The GitHub Actions workflow embeds only the Supabase URL and a public Publishable key, which is designed for client apps. RLS is the security boundary. Every push to `main` builds a debug APK artifact; the artifact expires after 14 days. This is a testing build, not a store-signed release.
 
-Deploy the function from `supabase/functions/notify-report` using the Supabase Dashboard or CLI, then configure its server-side secrets in Supabase. Do not put those secrets in GitHub source or the Android app.
+## Final two-device acceptance test
 
-## 6. Verify before using with a group
+After enabling anonymous sign-ins and granting the owner role, test with two different accounts/devices:
 
-Use two test accounts on two devices:
-
-- Create a crew on device A and join it from device B using the invite code.
-- Confirm member lists, current-day task completion, leaderboard, and messages update across devices.
-- Add a shared task, upload a proof photo, and confirm only crew members can view it.
+- Create a crew on device A and join it from device B with the invite code.
+- Confirm member lists, daily completions, leaderboard, and chat synchronize.
+- Create a shared task and upload a proof; confirm only crew members can access it.
 - Submit a report and verify it appears in the owner's moderation dashboard.
-- Confirm an ordinary member cannot access admin actions or view another crew's data.
+- Confirm a normal member cannot access owner-only moderation or another crew's data.
 
-Do not treat the live backend as production-ready until these checks pass. The current Android workflow produces a debug APK for testing, not a store-signed release.
+Do not call the service production-ready until these end-to-end checks pass.
