@@ -20,14 +20,14 @@
 - Remote push notifications (chat/task events), private 1:1 chat, Arabic localization and complete historical day-by-day statistics are incomplete.
 - No dependency lockfile is committed yet.
 - A full Expo/TypeScript check, Expo Doctor run and physical-device QA have not been completed.
-- No live Supabase project has been provisioned or migrated. SQL has not been run against a live database.
-- The report email Edge Function needs deployment and Resend secrets/domain verification.
+- Supabase project `jengdekjfrizdypysjef` is live. Migrations 0001–0005 have been applied and verified. RLS is enabled for all ten SONIUM public tables; proof storage is private and limited to image files up to 10 MiB. The `notify-report` Edge Function is deployed with JWT verification.
+- The report Edge Function is deployed. Email notifications are not configured until the owner adds Resend secrets (`RESEND_API_KEY`, `REPORTS_EMAIL`, optional `REPORTS_FROM`) in Supabase.
 - EAS cloud APK build requires the owner's Expo account and signing/build setup. No APK has been generated.
 
 ## Next execution order
 1. Install dependencies and create/commit a lockfile.
 2. Run TypeScript and Expo Doctor checks; fix code/config errors.
-3. Provision a disposable Supabase project, apply both migrations, and test RLS/storage/admin paths.
+3. Enable Anonymous sign-ins in Supabase Auth, create the owner's first account, bootstrap the owner UUID in `app_admins`, and test RLS/storage/admin paths.
 4. Run the full manual checklist in `docs/RELEASE_QA_CHECKLIST.md` on Android.
 5. Compare native screens against the original HTML prototype and close visual/interaction gaps.
 6. Produce and install an EAS internal APK; record the exact build artifact and test results.
