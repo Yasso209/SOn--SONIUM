@@ -42,7 +42,7 @@ jobs:
         run: |
           echo "EXPO_PUBLIC_SUPABASE_URL=https://jengdekjfrizdypysjef.supabase.co" >> "$GITHUB_ENV"
           if [[ -n "$SUPABASE_PUBLISHABLE_KEY" ]]; then
-            echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_PUBLISHABLE_KEY" >> "$GITHUB_ENV"
+            echo "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY" >> "$GITHUB_ENV"
             echo "Supabase public client configured for Android bundle."
           else
             echo "::warning::SUPABASE_PUBLISHABLE_KEY is not set. This APK will use local/offline mode."
