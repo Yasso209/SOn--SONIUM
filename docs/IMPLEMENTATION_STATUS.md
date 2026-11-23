@@ -1,24 +1,25 @@
 # SONIUM implementation status — 23 Nov 2026
 
-## Present in the source
-- Expo / React Native / TypeScript app shell and four primary tabs.
-- Local persistence for basic profile, theme, task completion, prayer selection and reminder preference.
-- Supabase anonymous authentication bootstrap and email/password account linking / sign-in.
+## Present in the current GitHub source
+- Expo Router / React Native / TypeScript app shell with Home, Stats, Crew and Settings tabs.
+- Local persistence for profile name/photo, theme, task completion, prayer selection and reminder preference.
+- Supabase anonymous authentication bootstrap and email/password account linking / sign-in recovery.
 - Crew create/join, multi-crew selection, leave, rename and penalty selection.
-- Task completions and prayer subtasks backed by `completions` when a crew is connected.
-- Crew members, leaderboard, Realtime group chat, emoji stickers.
-- Shared crew tasks, private storage upload, signed proof image display.
-- Member reporting, report email Edge Function, owner-only report/ban/crew moderation UI.
+- Current-day task completions and the five-prayer checklist backed by `completions` when a crew is connected.
+- Crew member list, leaderboard, Realtime crew chat and emoji stickers.
 - Local daily reminder notification.
 - EAS internal Android APK profile and Windows build helper.
+- Supabase schema/RLS migrations and report-email Edge Function source.
 
-## Not yet release-verified / incomplete
-- Dependencies could not be installed in this build environment because package registry access timed out. Therefore a full Expo/TypeScript build and device test were not possible here.
-- No real Supabase project has been provisioned or migrated; SQL has not been run against a live database.
+## Not yet implemented or release-verified in the current GitHub app screen
+- The full original HTML prototype is not yet committed in this repository; the native screen is a reduced implementation pass and still needs a detailed visual/interaction comparison.
+- Shared Crew Tasks photo-proof interface and upload flow are not currently integrated in the GitHub app screen.
+- Member reporting and owner moderation dashboard (ban/unban, report review, message deletion and crew moderation) are not currently integrated in the GitHub app screen, although backend SQL RPCs and the report email function are present.
+- Remote push notifications (chat/task events), private 1:1 chat, Arabic localization and complete historical day-by-day statistics are incomplete.
+- Dependencies could not be installed in the original build environment because package registry access timed out. A full Expo/TypeScript build and device test have not been completed.
+- No live Supabase project has been provisioned or migrated. SQL has not been run against a live database.
 - The report email Edge Function needs deployment and Resend secrets/domain verification.
-- Remote push notifications (chat/task events), photo camera capture, 1:1 chat, full weekly verdict automation, and production privacy/legal review are not complete.
-- The native UI is an implementation pass, not yet pixel-compared against every screen and interaction in the HTML prototype.
-- EAS cloud APK build requires the owner's Expo account and signing/build setup. No APK has been generated yet.
+- EAS cloud APK build requires the owner's Expo account and signing/build setup. No APK has been generated.
 
 ## Release gate
-Do not distribute this build as a finished production app until migrations are applied and tested, RLS is reviewed, a device QA pass is completed, and a signed APK is successfully produced.
+Do not distribute this build as a finished production app until the missing app features are restored, migrations/RLS are reviewed and tested, device QA is completed, and a signed APK is successfully produced.
