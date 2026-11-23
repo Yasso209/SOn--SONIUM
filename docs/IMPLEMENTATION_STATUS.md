@@ -13,8 +13,8 @@
 
 ## Not yet implemented or release-verified in the current GitHub app screen
 - The full original HTML prototype is not yet committed in this repository; the native screen is a reduced implementation pass and still needs a detailed visual/interaction comparison.
-- Shared Crew Tasks photo-proof interface and upload flow are not currently integrated in the GitHub app screen.
-- Member reporting and owner moderation dashboard (ban/unban, report review, message deletion and crew moderation) are not currently integrated in the GitHub app screen, although backend SQL RPCs and the report email function are present.
+- Shared Crew Tasks with camera capture, private Storage upload and signed proof display are integrated in the app source, but have not been verified against a live Supabase project/device.
+- Member reporting, report email invocation and owner-only moderation controls (ban/unban, report review, message removal, crew/member moderation) are integrated in the app source and SQL, but have not been verified against a live backend.
 - Remote push notifications (chat/task events), private 1:1 chat, Arabic localization and complete historical day-by-day statistics are incomplete.
 - Dependencies could not be installed in the original build environment because package registry access timed out. A full Expo/TypeScript build and device test have not been completed.
 - No live Supabase project has been provisioned or migrated. SQL has not been run against a live database.
