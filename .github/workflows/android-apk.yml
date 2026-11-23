@@ -35,18 +35,15 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      # Supabase Publishable keys are designed to be embedded in client apps.
+      # Database security is enforced by RLS; never place a Secret/service_role key here.
       - name: Configure Supabase public client
         env:
-          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
-        shell: bash
+          EXPO_PUBLIC_SUPABASE_URL: https://jengdekjfrizdypysjef.supabase.co
+          EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: sb_publishable_1H0yIKTRQ5nrkdQSuD1xkA_a2g7vQOd
         run: |
-          echo "EXPO_PUBLIC_SUPABASE_URL=https://jengdekjfrizdypysjef.supabase.co" >> "$GITHUB_ENV"
-          if [[ -n "$SUPABASE_PUBLISHABLE_KEY" ]]; then
-            echo "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$SUPABASE_PUBLISHABLE_KEY" >> "$GITHUB_ENV"
-            echo "Supabase public client configured for Android bundle."
-          else
-            echo "::warning::SUPABASE_PUBLISHABLE_KEY is not set. This APK will use local/offline mode."
-          fi
+          echo "EXPO_PUBLIC_SUPABASE_URL=$EXPO_PUBLIC_SUPABASE_URL" >> "$GITHUB_ENV"
+          echo "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY" >> "$GITHUB_ENV"
 
       - name: Generate native Android project
         run: npx expo prebuild --platform android --non-interactive
