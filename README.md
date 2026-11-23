@@ -12,6 +12,7 @@ SONIUM is a 14-day challenge app for friends. The Android client is built with E
 - `supabase/functions/notify-report/` — optional report email notification function.
 - `docs/HANDOFF-original.md` — original product decisions and design requirements.
 - `docs/IMPLEMENTATION_STATUS.md` — honest implementation and release status.
+- `docs/RELEASE_QA_CHECKLIST.md` — manual verification steps required before release.
 
 ## Current implementation
 
