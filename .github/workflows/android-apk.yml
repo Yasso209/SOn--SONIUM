@@ -35,6 +35,19 @@ jobs:
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
+      - name: Configure Supabase public client
+        env:
+          SUPABASE_PUBLISHABLE_KEY: ${{ secrets.SUPABASE_PUBLISHABLE_KEY }}
+        shell: bash
+        run: |
+          echo "EXPO_PUBLIC_SUPABASE_URL=https://jengdekjfrizdypysjef.supabase.co" >> "$GITHUB_ENV"
+          if [[ -n "$SUPABASE_PUBLISHABLE_KEY" ]]; then
+            echo "EXPO_PUBLIC_SUPABASE_ANON_KEY=$SUPABASE_PUBLISHABLE_KEY" >> "$GITHUB_ENV"
+            echo "Supabase public client configured for Android bundle."
+          else
+            echo "::warning::SUPABASE_PUBLISHABLE_KEY is not set. This APK will use local/offline mode."
+          fi
+
       - name: Generate native Android project
         run: npx expo prebuild --platform android --non-interactive
 
