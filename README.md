@@ -15,7 +15,7 @@ SONIUM is a 14-day challenge app for friends. The Android client is built with E
 
 ## Current implementation
 
-The native app includes Home, Stats, Crew and Settings; daily tasks and the five-prayer checklist; day selection; profile/theme persistence; anonymous Supabase sign-in; crew create/join/switch/leave; leaderboard; Realtime crew chat with stickers; email/password account linking; local daily reminder; and privacy disclosure for owner review of crew messages.
+The native app includes Home, Stats, Crew and Settings; daily tasks and the five-prayer checklist; day selection; profile/theme persistence; anonymous Supabase sign-in; crew create/join/switch/leave; leaderboard; Realtime crew chat with stickers; shared crew tasks with camera proof upload and signed image display; member reporting; owner-only moderation controls for reports, accounts, messages and crews; email/password account linking; local daily reminder; and privacy disclosure for owner review of crew messages.
 
 The backend migrations define crew membership, tasks, completions, shared tasks/proofs, messages, reports, admin controls and RLS policies. The report Edge Function sends report metadata through Resend when configured.
 
