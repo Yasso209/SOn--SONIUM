@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Image, Keyboard, KeyboardAvoidingView, Modal, Pressable, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Platform, Switch, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Keyboard, KeyboardAvoidingView, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Platform, Switch, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { useFonts } from 'expo-font';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
@@ -54,6 +54,8 @@ export default function App(){
  const [proofReviewBusy,setProofReviewBusy]=useState<string|null>(null);
  const [proofUploadBusy,setProofUploadBusy]=useState<string|null>(null);
  const [keyboardVisible,setKeyboardVisible]=useState(false);
+ const [refreshing,setRefreshing]=useState(false);
+ const screenFade=useRef(new Animated.Value(1)).current;
  const [fontsLoaded]=useFonts(Ionicons.font);
  const [day,setDay]=useState(1);
  const [currentDay,setCurrentDay]=useState(1);
@@ -568,9 +570,20 @@ export default function App(){
   </Card></>}
   <Text style={{color:C.muted,fontSize:10,textAlign:'center',marginTop:20}}>SONIUM · VERSION 0.2.0</Text>
  </>;
+ const refreshApp=async()=>{
+  if(refreshing)return;
+  setRefreshing(true);
+  try{await loadCrew();toast('SONIUM refreshed');}
+  catch(e:any){toast(e?.message||'Could not refresh right now');}
+  finally{setRefreshing(false);}
+ };
+ useEffect(()=>{
+  screenFade.setValue(0.72);
+  Animated.timing(screenFade,{toValue:1,duration:240,useNativeDriver:true}).start();
+ },[tab,screenFade]);
  const screen=tab==='Home'?<Home/>:tab==='Stats'?<Stats/>:tab==='Crew'?<CrewView/>:<Settings/>;
  if(loading||!fontsLoaded)return <SafeAreaView style={{flex:1,backgroundColor:C.bg,alignItems:'center',justifyContent:'center'}}><ActivityIndicator color={C.accent}/><Text style={{color:C.muted,marginTop:12}}>Preparing your challenge...</Text></SafeAreaView>;
- return <KeyboardAvoidingView style={{flex:1}} behavior="padding"><SafeAreaView style={{flex:1,backgroundColor:C.bg}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><ScrollView keyboardShouldPersistTaps="always" keyboardDismissMode="on-drag" contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{screen}</ScrollView>{!keyboardVisible&&<View style={[styles.nav,{backgroundColor:C.card,borderColor:C.line}]}>{(['Home','Stats','Crew','Settings'] as Tab[]).map((t,i)=><TouchableOpacity key={t} accessibilityRole="button" accessibilityLabel={t} onPress={()=>setTab(t)} style={[styles.navItem,{backgroundColor:tab===t?C.accent:'transparent'}]}><Ionicons name={((['home','stats-chart','people','settings'] as const)[i]) as any} size={23} color={tab===t?C.accentInk:C.muted}/><Text style={{fontSize:11,fontWeight:'900',color:tab===t?C.accentInk:C.muted}}>{t}</Text></TouchableOpacity>)}</View>}{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
+ return <KeyboardAvoidingView style={{flex:1}} behavior="padding"><SafeAreaView style={{flex:1,backgroundColor:C.bg}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><Animated.View style={{flex:1,opacity:screenFade}}><ScrollView keyboardShouldPersistTaps="always" keyboardDismissMode="on-drag" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshApp} tintColor={C.accent} colors={[C.accent]} progressBackgroundColor={C.card}/>} contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{screen}</ScrollView></Animated.View>{!keyboardVisible&&<View style={[styles.nav,{backgroundColor:C.card,borderColor:C.line}]}>{(['Home','Stats','Crew','Settings'] as Tab[]).map((t,i)=><TouchableOpacity key={t} accessibilityRole="button" accessibilityLabel={t} onPress={()=>setTab(t)} style={[styles.navItem,{backgroundColor:tab===t?C.accent:'transparent'}]}><Ionicons name={((['home','stats-chart','people','settings'] as const)[i]) as any} size={23} color={tab===t?C.accentInk:C.muted}/><Text style={{fontSize:11,fontWeight:'900',color:tab===t?C.accentInk:C.muted}}>{t}</Text></TouchableOpacity>)}</View>}{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
  <Modal visible={showDays} animationType="slide" transparent onRequestClose={()=>setShowDays(false)}>
   <View style={styles.scrim}><View style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'90%'}]}>
    <View style={styles.sheetHead}><View><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>Your challenge days</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>Choose a day to view its personal tasks</Text></View><TouchableOpacity onPress={()=>setShowDays(false)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
