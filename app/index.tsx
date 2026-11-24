@@ -182,7 +182,7 @@ export default function App(){
  const C=isLight?colors.light:colors.dark;
  const translate=(value:string)=>{
   if(language!=='ar')return value;
-  const weekly=value.match(/^Weekly (\\d{2}W\\d{2}) · (.+)$/);
+  const weekly=value.match(/^Weekly (\d{2}W\d{2}) · (.+)$/);
   if(weekly)return 'مهمة الأسبوع · '+(AR[weekly[2]]||weekly[2])+' · '+weekly[1];
   return AR[value]||value;
  };
@@ -614,7 +614,7 @@ export default function App(){
    </Card>
     <Section title="Weekly verdict"/>
     <Card style={{padding:15}}>
-     <Text style={{color:C.fg,fontSize:15,fontWeight:'900'}}>{getWeeklyVerdictTitle().replace(/^Weekly Verdict · /,'').replace(/ · \d{4}-W\d{2}$/,'')}</Text>
+      <Text style={{color:C.fg,fontSize:15,fontWeight:'900'}}>{getWeeklyVerdictTitle().replace(/^Weekly \d{2}W\d{2} · /,'')}</Text>
      <Text style={{color:C.muted,fontSize:11,lineHeight:18,marginTop:7}}>This week's challenge is automatically added to Shared crew tasks above. Everyone submits a photo, and every other crew member must approve it before the crew points count.</Text>
      <Text style={{color:C.accent,fontSize:10,fontWeight:'900',marginTop:9}}>{sharedTasks.find(t=>t.title===getWeeklyVerdictTitle())?((sharedTasks.find(t=>t.title===getWeeklyVerdictTitle()).shared_proofs||[]).length+' member proofs submitted'):'Preparing this week’s shared task…'}</Text>
     </Card>
@@ -657,6 +657,7 @@ export default function App(){
      <TouchableOpacity onPress={()=>setLanguage('en')} style={[styles.themeChoice,{backgroundColor:language==='en'?C.accent:C.card2}]}><Text style={{color:language==='en'?C.accentInk:C.fg,fontWeight:'800'}}>English</Text></TouchableOpacity>
      <TouchableOpacity onPress={()=>setLanguage('ar')} style={[styles.themeChoice,{backgroundColor:language==='ar'?C.accent:C.card2}]}><Text style={{color:language==='ar'?C.accentInk:C.fg,fontWeight:'800'}}>العربية</Text></TouchableOpacity>
     </View>
+  </Card>
   <Section title="Your crews"/>
   <Card><Text style={{color:C.fg,fontWeight:'800'}}>{crew?.name||'No active crew'}</Text>
    {crews.filter(c=>c.id!==activeCrewId).map(c=><TouchableOpacity key={c.id} onPress={()=>setActiveCrewId(c.id)} style={{paddingVertical:9}}><Text style={{color:C.accent}}>Switch to · {c.name}</Text></TouchableOpacity>)}
