@@ -742,7 +742,6 @@ export default function App(){
        <TextInput value={rename} onChangeText={setRename} maxLength={28} placeholder="Crew name" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line}]}/>
        <TouchableOpacity onPress={()=>{const value=rename.trim();if(!value)return toast('Write a crew name first');saveCrew({name:value.slice(0,28)});setRename('');setModal(null);}} style={[styles.cta,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>Save</Text></TouchableOpacity>
       </>:modal==='report'?<>
-     </>:modal==='report'?<>
       <Text style={{color:C.muted,fontSize:12,marginBottom:8}}>Reports are private and reviewed by the app owner.</Text>
       <View style={{flexDirection:'row',flexWrap:'wrap',gap:7}}>{(['abuse','harassment','inappropriate','spam','other'] as const).map(v=><TouchableOpacity key={v} onPress={()=>setReportReason(v)} style={[styles.smallBtn,{backgroundColor:reportReason===v?C.accent:C.card2}]}><Text style={{color:reportReason===v?C.accentInk:C.fg,fontWeight:'800'}}>{v}</Text></TouchableOpacity>)}</View>
       <TextInput value={reportNote} onChangeText={setReportNote} placeholder="Details (optional)" placeholderTextColor={C.muted} multiline style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line,marginTop:10,minHeight:70}]}/>
