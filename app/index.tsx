@@ -180,8 +180,96 @@ export default function App(){
  };
  useEffect(()=>{loadCrew();},[userId,activeCrewId]);
  useEffect(()=>{if(!supabase||!crew)return;const ch=supabase.channel('crew-'+crew.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'crew_id=eq.'+crew.id},p=>setMessages(old=>old.some(m=>m.id===(p.new as Msg).id)?old:[...old,p.new as Msg])).subscribe();return()=>{supabase?.removeChannel(ch);};},[crew?.id]);
- const toggleTask=async(id:string)=>{if(day!==currentDay||!challengeActive){toast('Past and future days are read-only');return;}if(id==='prayers'){setShowPrayers(true);return;}const was=done.includes(id);setDone(old=>was?old.filter(x=>x!==id):[...old,id]);if(supabase&&userId&&crew){if(was)await supabase.from('completions').delete().match({user_id:userId,crew_id:crew.id,day:currentDay,task_id:id});else{const {error}=await supabase.from('completions').insert({user_id:userId,crew_id:crew.id,day:currentDay,task_id:id});if(error)toast(error.message);}await refreshStats(crew.id,userId);}if(!was)toast('+'+TASKS.find(t=>t.id===id)?.points+' points');};
- const savePrayers=async(next:string[])=>{if(day!==currentDay||!challengeActive)return;setPrayers(next);const complete=next.length===5;setDone(old=>complete?[...new Set([...old,'prayers'])]:old.filter(x=>x!=='prayers'));if(supabase&&userId&&crew){const ids=['prayers_fajr','prayers_dhuhr','prayers_asr','prayers_maghrib','prayers_isha'];const rows=ids.filter((_,i)=>next.includes(PRAYERS[i])).map(task_id=>({user_id:userId,crew_id:crew.id,day:currentDay,task_id}));if(rows.length)await supabase.from('completions').upsert(rows,{onConflict:'user_id,crew_id,day,task_id'});const missing=ids.filter((_,i)=>!next.includes(PRAYERS[i]));if(missing.length)await supabase.from('completions').delete().eq('user_id',userId).eq('crew_id',crew.id).eq('day',currentDay).in('task_id',missing);if(complete)await supabase.from('completions').upsert({user_id:userId,crew_id:crew.id,day:currentDay,task_id:'prayers'},{onConflict:'user_id,crew_id,day,task_id'});else await supabase.from('completions').delete().match({user_id:userId,crew_id:crew.id,day:currentDay,task_id:'prayers'});await refreshStats(crew.id,userId);}};
+ const openTaskEditor=(task?:PersonalTask)=>{
+  setActiveTask(task||null);
+  setTaskTitle(task?.title||'');
+  setTaskDetails(task?.details||'');
+  setTaskPoints(String(task?.points??10));
+  setTaskIcon(task?.icon||'checkmark-circle-outline');
+  setTaskSubtasks((task?.subtasks||[]).join('\n'));
+  setTaskReminder(Boolean(task?.reminder_enabled));
+  setTaskReminderTime(task?.reminder_time?.slice(0,5)||'20:00');
+  setModal('task');
+ };
+ const syncTaskReminder=async(task:PersonalTask)=>{
+  try{
+   const scheduled=await Notifications.getAllScheduledNotificationsAsync();
+   for(const n of scheduled){if(String(n.content.data?.taskId||'')===task.id)await Notifications.cancelScheduledNotificationAsync(n.identifier);}
+   if(!task.reminder_enabled||!task.reminder_time)return;
+   const perm=await Notifications.getPermissionsAsync();if(!perm.granted){const req=await Notifications.requestPermissionsAsync();if(!req.granted){toast('Allow notifications to activate this task reminder');return;}}
+   if(Platform.OS==='android')await Notifications.setNotificationChannelAsync('sonium-reminders',{name:'Task reminders',importance:Notifications.AndroidImportance.DEFAULT});
+   const [hour,minute]=task.reminder_time.slice(0,5).split(':').map(Number);
+   if(!Number.isInteger(hour)||!Number.isInteger(minute)||hour<0||hour>23||minute<0||minute>59)return;
+   await Notifications.scheduleNotificationAsync({content:{title:'SONIUM · '+task.title,body:task.details||'Time for your task. Make today count.',data:{taskId:task.id}},trigger:{type:Notifications.SchedulableTriggerInputTypes.DAILY,hour,minute,channelId:'sonium-reminders'}});
+  }catch(e:any){toast(e?.message||'Could not schedule task reminder');}
+ };
+ const saveTask=async()=>{
+  if(!supabase||!userId||!crew){toast('Create or join a crew before adding your personal tasks');return;}
+  const title=taskTitle.trim();const points=Number(taskPoints);
+  if(!title)return toast('Write a task name first');
+  if(!Number.isInteger(points)||points<0||points>100)return toast('Points must be between 0 and 100');
+  if(taskReminder&&!/^([01]\d|2[0-3]):[0-5]\d$/.test(taskReminderTime))return toast('Reminder time must use HH:MM (24-hour)');
+  const subitems=taskSubtasks.split('\n').map(x=>x.trim()).filter(Boolean).slice(0,12);
+  setTaskSaving(true);
+  try{
+   const payload={user_id:userId,crew_id:crew.id,title:title.slice(0,80),details:taskDetails.trim()||null,points,icon:taskIcon,subtasks:subitems,reminder_enabled:taskReminder,reminder_time:taskReminder?taskReminderTime+':00':null,sort_order:activeTask?.sort_order??tasks.length};
+   let saved:PersonalTask|null=null;
+   if(activeTask){const {data,error}=await supabase.from('personal_tasks').update(payload).eq('id',activeTask.id).select('*').single();if(error)throw error;saved={...data,subtasks:Array.isArray(data.subtasks)?data.subtasks:[]};}
+   else{const {data,error}=await supabase.from('personal_tasks').insert(payload).select('*').single();if(error)throw error;saved={...data,subtasks:Array.isArray(data.subtasks)?data.subtasks:[]};}
+   if(saved){setTasks(old=>activeTask?old.map(t=>t.id===saved!.id?saved!:t):[...old,saved!]);await syncTaskReminder(saved);}
+   setModal(null);setActiveTask(null);toast(activeTask?'Task updated':'Your task was added');
+  }catch(e:any){toast(e?.message||'Could not save task');}finally{setTaskSaving(false);}
+ };
+ const deleteTask=(task:PersonalTask)=>Alert.alert('Delete task?', 'This removes the task from your personal list. Existing points already earned stay in your stats.',[
+  {text:'Cancel',style:'cancel'},
+  {text:'Delete',style:'destructive',onPress:async()=>{
+   if(!supabase||!userId||!crew)return;
+   await supabase.from('completions').delete().eq('user_id',userId).eq('crew_id',crew.id).like('task_id',task.id+':sub:%');
+   await supabase.from('completions').delete().eq('user_id',userId).eq('crew_id',crew.id).eq('task_id',task.id);
+   const {error}=await supabase.from('personal_tasks').delete().eq('id',task.id).eq('user_id',userId);
+   if(error){toast(error.message);return;}
+   const scheduled=await Notifications.getAllScheduledNotificationsAsync();for(const n of scheduled){if(String(n.content.data?.taskId||'')===task.id)await Notifications.cancelScheduledNotificationAsync(n.identifier);}
+   setTasks(old=>old.filter(t=>t.id!==task.id));setDone(old=>old.filter(id=>id!==task.id));setSubtaskDone(old=>old.filter(id=>!id.startsWith(task.id+':sub:')));setModal(null);toast('Task deleted');
+  }}
+ ]);
+ const toggleTask=async(id:string)=>{
+  if(day!==currentDay||!challengeActive){toast('Only today can be checked off');return;}
+  const task=tasks.find(t=>t.id===id);if(!task)return;
+  if((task.subtasks||[]).length){setActiveTask(task);setShowPrayers(true);return;}
+  const was=done.includes(id);
+  if(supabase&&userId&&crew){
+   const action=was?await supabase.from('completions').delete().match({user_id:userId,crew_id:crew.id,day:currentDay,task_id:id}):await supabase.from('completions').insert({user_id:userId,crew_id:crew.id,day:currentDay,task_id:id});
+   if(action.error){toast(action.error.message);return;}
+   await refreshStats(crew.id,userId);
+  }
+  setDone(old=>was?old.filter(x=>x!==id):[...old,id]);
+  if(!was)toast('+'+task.points+' points · task completed');
+ };
+ const toggleSubtask=async(index:number)=>{
+  if(!activeTask||!supabase||!userId||!crew)return;
+  if(day!==currentDay||!challengeActive){toast('Only today can be checked off');return;}
+  const key=activeTask.id+':sub:'+index;const was=subtaskDone.includes(key);const next=was?subtaskDone.filter(x=>x!==key):[...subtaskDone,key];
+  const result=was
+   ?await supabase.from('completions').delete().match({user_id:userId,crew_id:crew.id,day:currentDay,task_id:key})
+   :await supabase.from('completions').insert({user_id:userId,crew_id:crew.id,day:currentDay,task_id:key});
+  if(result.error){toast(result.error.message);return;}
+  setSubtaskDone(next);
+  const allDone=(activeTask.subtasks||[]).every((_,i)=>next.includes(activeTask.id+':sub:'+i));
+  if(allDone){
+   const {error}=await supabase.from('completions').upsert({user_id:userId,crew_id:crew.id,day:currentDay,task_id:activeTask.id},{onConflict:'user_id,crew_id,day,task_id',ignoreDuplicates:true});
+   if(error){toast(error.message);return;}setDone(old=>old.includes(activeTask.id)?old:[...old,activeTask.id]);toast('+'+activeTask.points+' points · all steps done');
+  }else{
+   await supabase.from('completions').delete().match({user_id:userId,crew_id:crew.id,day:currentDay,task_id:activeTask.id});
+   setDone(old=>old.filter(x=>x!==activeTask.id));
+  }
+  await refreshStats(crew.id,userId);
+ };
+ const voteProof=async(proofId:string,crewId:string,approved:boolean)=>{
+  if(!supabase||!userId)return;setProofReviewBusy(proofId);
+  const {error}=await supabase.from('shared_proof_reviews').upsert({proof_id:proofId,crew_id:crewId,reviewer_id:userId,approved},{onConflict:'proof_id,reviewer_id'});
+  if(error)toast(error.message);else{toast(approved?'Marked as done correctly':'Marked as not complete');await loadCrew();}
+  setProofReviewBusy(null);
+ };
  const createCrew=async()=>{if(!crewName.trim()||!supabase)return;const {data,error}=await supabase.rpc('create_crew',{p_name:crewName.trim()});if(error)toast(error.message);else{setCrewName('');setModal(null);setActiveCrewId(data);toast('Crew created');}};
  const joinCrew=async()=>{if(!inviteCode.trim()||!supabase)return;const {data,error}=await supabase.rpc('join_crew',{p_code:inviteCode.trim()});if(error)toast(error.message);else{setInviteCode('');setModal(null);setActiveCrewId(data);toast('Joined crew');}};
  const sendMessage=async(body:string,sticker:string|null=null)=>{if(!supabase||!userId||!crew||(!body.trim()&&!sticker))return;const {data,error}=await supabase.from('messages').insert({crew_id:crew.id,user_id:userId,body:body.trim()||null,sticker}).select('id,user_id,body,sticker,created_at').single();if(error)toast(error.message);else if(data)setMessages(old=>old.some(m=>m.id===data.id)?old:[...old,data as Msg]);setMessage('');};
