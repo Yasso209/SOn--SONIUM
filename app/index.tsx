@@ -17,7 +17,6 @@ const TASK_SUGGESTIONS = [
   {title:'Daily prayers',points:15,icon:'moon-outline',subtasks:['Fajr','Dhuhr','Asr','Maghrib','Isha']},
   {title:'Study for 1 hour',points:10,icon:'school-outline',subtasks:['First 25 minutes','Short break','Second 25 minutes']},
 ];
-const PRAYERS=['Fajr','Dhuhr','Asr','Maghrib','Isha'];
 const STICKERS=['🔥','💪','🏆','⚡','🎯','👏','🚀','💚'];
 const STORE='sonium-v1-state';
 type Tab='Home'|'Stats'|'Crew'|'Settings';
@@ -50,7 +49,6 @@ export default function App(){
  const [progressPeek,setProgressPeek]=useState(false);
  const progressAnim=useRef(new Animated.Value(0)).current;
  const [proofReviewBusy,setProofReviewBusy]=useState<string|null>(null);
- const [prayers,setPrayers]=useState<string[]>([]);
  const [day,setDay]=useState(1);
  const [currentDay,setCurrentDay]=useState(1);
  const [challengeActive,setChallengeActive]=useState(true);
@@ -77,7 +75,6 @@ export default function App(){
  const [password,setPassword]=useState('');
  const [accountEmail,setAccountEmail]=useState('');
  const [profileEdit,setProfileEdit]=useState(false);
- const [reminder,setReminder]=useState(false);
  const [loading,setLoading]=useState(true);
  const [userId,setUserId]=useState<string|null>(null);
  const [notice,setNotice]=useState('');
@@ -306,7 +303,6 @@ export default function App(){
   setTasks(old=>old.map(t=>t.id===task.id?updated:t));await syncTaskReminder(updated);
   toast(value?'Reminder enabled for '+task.title:'Reminder turned off');
  };
- const toggleReminder=async(value:boolean)=>{setReminder(value);if(value){const p=await Notifications.requestPermissionsAsync();if(!p.granted){setReminder(false);return toast('Notification permission not granted');}if(Platform.OS==='android')await Notifications.setNotificationChannelAsync('sonium-reminders',{name:'Daily reminders',importance:Notifications.AndroidImportance.DEFAULT});await Notifications.cancelAllScheduledNotificationsAsync();await Notifications.scheduleNotificationAsync({content:{title:'SONIUM · Daily check-in',body:'Your daily challenge is waiting. Make today count.'},trigger:{type:Notifications.SchedulableTriggerInputTypes.DAILY,hour:20,minute:0,channelId:'sonium-reminders'}});toast('Daily reminder set for 8:00 PM');}else{await Notifications.cancelAllScheduledNotificationsAsync();toast('Reminder off');}};
  const leaveCrew=()=>Alert.alert('Leave crew?','You can join again with an invite code.',[{text:'Cancel',style:'cancel'},{text:'Leave',style:'destructive',onPress:async()=>{if(supabase&&userId&&crew){const {error}=await supabase.from('crew_members').delete().match({crew_id:crew.id,user_id:userId});if(error)toast(error.message);else{setActiveCrewId(null);setCrew(null);await loadCrew();}}}}]);
  const saveCrew=async(patch:Record<string,any>)=>{if(!supabase||!crew)return;const {error}=await supabase.from('crews').update(patch).eq('id',crew.id);if(error)toast(error.message);else{setCrew({...crew,...patch});setCrews(old=>old.map(c=>c.id===crew.id?{...c,...patch}:c));toast('Crew settings saved');}};
  const adminSetBan=async(id:string,banned:boolean)=>{if(!supabase)return;const {error}=await supabase.rpc('admin_set_banned',{p_user_id:id,p_banned:banned});if(error)toast(error.message);else{setAdminProfiles(old=>old.map(p=>p.id===id?{...p,banned}:p));toast(banned?'Account banned':'Ban removed');}};
