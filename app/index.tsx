@@ -339,11 +339,13 @@ export default function App(){
   const client=supabase;if(!client||!userId)return;
   const {data:adminResult}=await client.rpc('is_admin');const admin=adminResult===true;setIsAdmin(admin);
   if(admin){
-   const {data:rs}=await client.from('reports').select('*').order('created_at',{ascending:false}).limit(50);
-   const {data:ps}=await client.from('profiles').select('id,name,banned').order('created_at',{ascending:false}).limit(100);
-   const {data:cs}=await client.from('crews').select('id,name').order('created_at',{ascending:false}).limit(100);
-   const {data:cms}=await client.from('crew_members').select('crew_id,user_id');
-   const {data:msgs}=await client.from('messages').select('id,crew_id,user_id,body,sticker').order('created_at',{ascending:false}).limit(60);
+   const [{data:rs},{data:ps},{data:cs},{data:cms},{data:msgs}]=await Promise.all([
+    client.from('reports').select('*').order('created_at',{ascending:false}).limit(50),
+    client.from('profiles').select('id,name,banned').order('created_at',{ascending:false}).limit(100),
+    client.from('crews').select('id,name').order('created_at',{ascending:false}).limit(100),
+    client.from('crew_members').select('crew_id,user_id'),
+    client.from('messages').select('id,crew_id,user_id,body,sticker').order('created_at',{ascending:false}).limit(60)
+   ]);
    if(rs)setAdminReports(rs);if(ps)setAdminProfiles(ps);if(cs)setAdminCrews(cs.map((x:any)=>({...x,members:(cms||[]).filter((m:any)=>m.crew_id===x.id)})));if(msgs)setAdminMessages(msgs);
   }
   const {data:ms}=await client.from('crew_members').select('crew_id').eq('user_id',userId);
@@ -358,24 +360,35 @@ export default function App(){
   if(serverDayError)toast('Could not sync the challenge day. Refresh and try again.');
   const activeDay=Math.max(1,Math.min(selected.days||14,elapsed||1));
   setCurrentDay(activeDay);setDay(activeDay);setChallengeActive(!serverDayError&&elapsed>=1&&elapsed<=(selected.days||14));
-  const [{data:taskRows},{data:checks},{data:allCompletions}]=await Promise.all([
+  const [
+   {data:taskRows},
+   {data:checks},
+   {data:allCompletions},
+   {data:cm},
+   {data:lb},
+   {data:msgs},
+   sharedResult
+  ]=await Promise.all([
    client.from('personal_tasks').select('id,user_id,crew_id,title,details,points,icon,subtasks,reminder_enabled,reminder_time,sort_order').eq('crew_id',selected.id).eq('user_id',userId).order('sort_order').order('created_at'),
    client.from('completions').select('task_id').eq('crew_id',selected.id).eq('user_id',userId).eq('day',activeDay),
-   client.from('completions').select('points,day,task_id').eq('crew_id',selected.id).eq('user_id',userId)
+   client.from('completions').select('points,day,task_id').eq('crew_id',selected.id).eq('user_id',userId),
+   client.from('crew_members').select('user_id').eq('crew_id',selected.id),
+   client.from('crew_leaderboard').select('user_id,name,points').eq('crew_id',selected.id).order('points',{ascending:false}),
+   client.from('messages').select('id,user_id,body,sticker,created_at').eq('crew_id',selected.id).order('created_at',{ascending:false}).limit(50),
+   client.from('shared_tasks').select('id,title,points,created_by,created_at,shared_proofs(id,user_id,photo_path,created_at,shared_proof_reviews(id,reviewer_id,approved,note))').eq('crew_id',selected.id).order('created_at',{ascending:false})
   ]);
+  let shared=sharedResult.data;
   setTasks((taskRows||[]).map((t:any)=>({...t,subtasks:Array.isArray(t.subtasks)?t.subtasks:[]})) as PersonalTask[]);
   const completionIds=(checks||[]).map((x:any)=>String(x.task_id));
   setDone(completionIds.filter((id:string)=>!id.includes(':sub:')&&!id.startsWith('prayers_')));
   setSubtaskDone(completionIds.filter((id:string)=>id.includes(':sub:')));
   setTotalEarned((allCompletions||[]).reduce((sum:any,r:any)=>sum+Number(r.points||0),0));
   const dayItems=Array.from({length:14},()=>new Set<string>());(allCompletions||[]).forEach((r:any)=>{const d=Number(r.day);if(d>=1&&d<=14&&!String(r.task_id).includes(':sub:')&&Number(r.points||0)>=0)dayItems[d-1].add(String(r.task_id));});setDayProgress(dayItems.map(s=>s.size));
-  const {data:cm}=await client.from('crew_members').select('user_id').eq('crew_id',selected.id);
   const memberIds=(cm||[]).map((x:any)=>x.user_id);
   const {data:people}=await client.from('profiles').select('id,name,avatar_path').in('id',memberIds);
   if(people){const withAvatars=await Promise.all(people.map(async(p:any)=>{let url=null;if(p.avatar_path){const {data}=await client.storage.from('avatars').createSignedUrl(p.avatar_path,3600);url=data?.signedUrl||null;}return {user_id:p.id,name:p.name||'Player',avatar_url:url};}));setMembers(withAvatars);}
-  const {data:lb}=await client.from('crew_leaderboard').select('user_id,name,points').eq('crew_id',selected.id).order('points',{ascending:false});if(lb)setBoard(lb);
-  const {data:msgs}=await client.from('messages').select('id,user_id,body,sticker,created_at').eq('crew_id',selected.id).order('created_at',{ascending:false}).limit(50);if(msgs)setMessages(msgs.reverse());
-  let {data:shared}=await client.from('shared_tasks').select('id,title,points,created_by,created_at,shared_proofs(id,user_id,photo_path,created_at,shared_proof_reviews(id,reviewer_id,approved,note))').eq('crew_id',selected.id).order('created_at',{ascending:false});
+  if(lb)setBoard(lb);
+  if(msgs)setMessages(msgs.reverse());
   const weeklyTitle=getWeeklyVerdictTitle();
   if(!(shared||[]).some((t:any)=>t.title===weeklyTitle)){
    await client.from('shared_tasks').insert({crew_id:selected.id,title:weeklyTitle,points:20,created_by:userId});
