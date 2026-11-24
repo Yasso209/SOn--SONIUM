@@ -32,6 +32,10 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Set up Gradle dependency cache
+        uses: gradle/actions/setup-gradle@v4
+
+
       - name: Install dependencies
         run: npm install --no-audit --no-fund
 
@@ -49,8 +53,11 @@ jobs:
         run: npx expo prebuild --platform android --non-interactive
 
       - name: Build release APK with embedded JavaScript bundle
+        timeout-minutes: 15
         working-directory: android
-        run: ./gradlew assembleRelease --no-daemon --stacktrace --console=plain --max-workers=2
+        env:
+          CI: 'true'
+        run: ./gradlew assembleRelease --no-daemon --stacktrace --console=plain --max-workers=2 --info
 
       - name: Verify embedded bundle and sign installable APK
         shell: bash
