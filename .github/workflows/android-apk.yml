@@ -59,6 +59,12 @@ jobs:
           CI: 'true'
         run: ./gradlew assembleRelease --no-daemon --stacktrace --console=plain --max-workers=2 --info
 
+      - name: Restore persistent Android signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: sonium-android-signing-key-v1
+
       - name: Verify embedded bundle and sign installable APK
         shell: bash
         run: |
