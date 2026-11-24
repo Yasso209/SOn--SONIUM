@@ -8,6 +8,7 @@ import * as Notifications from 'expo-notifications';
 import mascot from '../assets/mascot.webp';
 import { colors, ThemeMode } from '../src/theme/tokens';
 import { isSupabaseConfigured, supabase } from '../src/lib/supabase';
+import FloatingTabBar from '../src/components/FloatingTabBar';
 
 const TASK_SUGGESTIONS = [
   {title:'Drink 2L of water',points:5,icon:'water-outline',subtasks:[]},
@@ -24,6 +25,9 @@ type Crew={id:string;name:string;invite_code:string;start_date:string;days:numbe
 type Msg={id:string|number;user_id:string;body:string|null;sticker:string|null;created_at:string};
 type PersonalTask={id:string;user_id?:string;crew_id?:string;title:string;details:string|null;points:number;icon:string;subtasks:string[];reminder_enabled:boolean;reminder_time:string|null;sort_order:number};
 type CrewMember={user_id:string;name:string;avatar_url?:string|null};
+type Streak={id:string;title:string;icon:string;weekly_target:number;sort_order:number};
+type StreakCheck={streak_id:string;day:number};
+const STREAK_IDEAS=[{title:'Shower',icon:'water-outline'},{title:'Personal hygiene',icon:'sparkles-outline'},{title:'Prayer',icon:'moon-outline'},{title:'Gaming session',icon:'game-controller-outline'},{title:'Stay awake 24h',icon:'eye-outline'}];
 
 Notifications.setNotificationHandler({handleNotification:async()=>({shouldShowAlert:true,shouldShowBanner:true,shouldShowList:true,shouldPlaySound:false,shouldSetBadge:false})});
 
@@ -67,7 +71,12 @@ export default function App(){
  const [penaltyCustom,setPenaltyCustom]=useState('');
  const [showDays,setShowDays]=useState(false);
  const [showPrayers,setShowPrayers]=useState(false);
- const [modal,setModal]=useState<'create'|'join'|'privacy'|'account'|'report'|'task'|null>(null);
+ const [modal,setModal]=useState<'create'|'join'|'privacy'|'account'|'report'|'task'|'streak'|null>(null);
+ const [streaks,setStreaks]=useState<Streak[]>([]);
+ const [streakChecks,setStreakChecks]=useState<StreakCheck[]>([]);
+ const [streakTitle,setStreakTitle]=useState('');
+ const [streakIcon,setStreakIcon]=useState('flame-outline');
+ const [streakTarget,setStreakTarget]=useState('0');
  const [reportUser,setReportUser]=useState('');
  const [reportNote,setReportNote]=useState('');
  const [reportReason,setReportReason]=useState('abuse');
@@ -81,6 +90,10 @@ export default function App(){
  const [notice,setNotice]=useState('');
  const [weeklyPoints,setWeeklyPoints]=useState<number[]>([0,0,0,0,0,0,0]);
  const [dayProgress,setDayProgress]=useState<number[]>(Array(14).fill(0));
+ const [dayPoints,setDayPoints]=useState<number[]>(Array(14).fill(0));
+ const [statSheet,setStatSheet]=useState<'tasks'|'streak'|'members'|'points'|'progress'|'week'|null>(null);
+ const [weekOffset,setWeekOffset]=useState(0);
+ const fillAnim=useRef(new Animated.Value(0)).current;
  const [weekLabels,setWeekLabels]=useState<string[]>(['M','T','W','T','F','S','S']);
  const [streak,setStreak]=useState(0);
  const [isAdmin,setIsAdmin]=useState(false);
@@ -98,6 +111,9 @@ export default function App(){
  const crewPoints=board.reduce((sum,p)=>sum+Number(p.points||0),0);
  const myRank=Math.max(0,board.findIndex(p=>p.user_id===userId)+1);
  const daysLeft=crew?Math.max(0,(crew.days||14)-currentDay):14-currentDay;
+ const totalDays=crew?.days||14;
+ const completedDays=tasks.length?Array.from({length:Math.min(currentDay,totalDays)},(_,i)=>dayProgress[i]||0).filter(n=>n>=tasks.length).length:0;
+ const completedPct=Math.round(completedDays/totalDays*100);
  const online=Boolean(isSupabaseConfigured&&userId);
  const toast=(s:string)=>{setNotice(s);setTimeout(()=>setNotice(''),2500);};
  const saveLocal=async(patch:Record<string,unknown>)=>{const raw=await AsyncStorage.getItem(STORE);await AsyncStorage.setItem(STORE,JSON.stringify({...(raw ? JSON.parse(raw) : {}), ...patch}));};
@@ -112,6 +128,7 @@ export default function App(){
   }
  }catch(e:any){toast(e?.message||'Could not start SONIUM');}finally{if(active)setLoading(false);}})();return()=>{active=false;};},[]);
  useEffect(()=>{saveLocal({name,avatar,done,subtaskDone,themeMode}).catch(()=>{});},[name,avatar,done,subtaskDone,themeMode]);
+ useEffect(()=>{Animated.timing(fillAnim,{toValue:completedPct,duration:800,useNativeDriver:false}).start();},[completedPct,fillAnim]);
  useEffect(()=>{Animated.spring(progressAnim,{toValue:progressPeek?1:0,useNativeDriver:false,friction:8,tension:75}).start();},[progressPeek,progressAnim]);
  const refreshStats=async(cId:string,uid:string)=>{
   if(!supabase)return;
@@ -136,6 +153,49 @@ export default function App(){
   setSubtaskDone(ids.filter((id:string)=>id.includes(':sub:')));
   setDay(dayNumber);
  };
+ const loadStreaks=async(cId:string)=>{
+  if(!supabase||!userId)return;
+  const [{data:rows},{data:checks}]=await Promise.all([
+   supabase.from('habit_streaks').select('id,title,icon,weekly_target,sort_order').eq('crew_id',cId).eq('user_id',userId).order('sort_order').order('created_at'),
+   supabase.from('habit_checks').select('streak_id,day').eq('crew_id',cId).eq('user_id',userId)
+  ]);
+  setStreaks((rows||[]) as Streak[]);
+  setStreakChecks((checks||[]).map((x:any)=>({streak_id:String(x.streak_id),day:Number(x.day)})));
+ };
+ const streakRun=(id:string)=>{
+  const days=new Set(streakChecks.filter(c=>c.streak_id===id).map(c=>c.day));
+  let d=days.has(currentDay)?currentDay:currentDay-1;let n=0;
+  while(d>=1&&days.has(d)){n++;d--;}
+  return n;
+ };
+ const streakWeek=(id:string,upTo:number)=>streakChecks.filter(c=>c.streak_id===id&&c.day>upTo-7&&c.day<=upTo).length;
+ const toggleStreak=async(st:Streak)=>{
+  if(!supabase||!userId||!crew)return;
+  if(day!==currentDay||!challengeActive){toast('Only today can be checked off');return;}
+  const was=streakChecks.some(c=>c.streak_id===st.id&&c.day===currentDay);
+  const result=was
+   ?await supabase.from('habit_checks').delete().match({streak_id:st.id,user_id:userId,day:currentDay})
+   :await supabase.from('habit_checks').insert({streak_id:st.id,user_id:userId,crew_id:crew.id,day:currentDay});
+  if(result.error){toast(result.error.message);return;}
+  setStreakChecks(old=>was?old.filter(c=>!(c.streak_id===st.id&&c.day===currentDay)):[...old,{streak_id:st.id,day:currentDay}]);
+  if(!was)toast(st.title+' · streak continues');
+ };
+ const openStreakEditor=()=>{setStreakTitle('');setStreakIcon('flame-outline');setStreakTarget('0');setShowDays(false);setModal('streak');};
+ const saveStreak=async()=>{
+  if(!supabase||!userId||!crew){toast('Create or join a crew first');return;}
+  const title=streakTitle.trim();const target=Number(streakTarget);
+  if(!title)return toast('Write a streak name first');
+  if(!Number.isInteger(target)||target<0||target>7)return toast('Weekly target must be 0 to 7');
+  const {data,error}=await supabase.from('habit_streaks').insert({user_id:userId,crew_id:crew.id,title:title.slice(0,40),icon:streakIcon,weekly_target:target,sort_order:streaks.length}).select('id,title,icon,weekly_target,sort_order').single();
+  if(error){toast(error.message);return;}
+  setStreaks(old=>[...old,data as Streak]);setModal(null);setShowDays(true);toast('Streak added');
+ };
+ const deleteStreak=(st:Streak)=>Alert.alert('Delete streak?','Its check history will be removed too.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:async()=>{
+  if(!supabase||!userId)return;
+  const {error}=await supabase.from('habit_streaks').delete().eq('id',st.id).eq('user_id',userId);
+  if(error){toast(error.message);return;}
+  setStreaks(old=>old.filter(x=>x.id!==st.id));setStreakChecks(old=>old.filter(c=>c.streak_id!==st.id));toast('Streak deleted');
+ }}]);
  const loadCrew=async()=>{
   const client=supabase;if(!client||!userId)return;
   const {data:adminResult}=await client.rpc('is_admin');const admin=adminResult===true;setIsAdmin(admin);
@@ -149,7 +209,7 @@ export default function App(){
   }
   const {data:ms}=await client.from('crew_members').select('crew_id').eq('user_id',userId);
   const ids=(ms||[]).map((x:any)=>x.crew_id);
-  if(!ids.length){setCrews([]);setCrew(null);setMembers([]);setBoard([]);setMessages([]);setSharedTasks([]);setTasks([]);setDone([]);setSubtaskDone([]);setTotalEarned(0);return;}
+  if(!ids.length){setCrews([]);setCrew(null);setMembers([]);setBoard([]);setMessages([]);setSharedTasks([]);setTasks([]);setDone([]);setSubtaskDone([]);setStreaks([]);setStreakChecks([]);setTotalEarned(0);return;}
   const {data:cs}=await client.from('crews').select('id,name,invite_code,start_date,days,penalty,penalty_custom').in('id',ids);
   const list=(cs||[]) as Crew[];setCrews(list);
   const selected=list.find(c=>c.id===activeCrewId)||list[0];if(!selected)return;
@@ -169,7 +229,7 @@ export default function App(){
   setDone(completionIds.filter((id:string)=>!id.includes(':sub:')&&!id.startsWith('prayers_')));
   setSubtaskDone(completionIds.filter((id:string)=>id.includes(':sub:')));
   setTotalEarned((allCompletions||[]).reduce((sum:any,r:any)=>sum+Number(r.points||0),0));
-  const dayItems=Array.from({length:14},()=>new Set<string>());(allCompletions||[]).forEach((r:any)=>{const d=Number(r.day);if(d>=1&&d<=14&&!String(r.task_id).includes(':sub:')&&Number(r.points||0)>=0)dayItems[d-1].add(String(r.task_id));});setDayProgress(dayItems.map(s=>s.size));
+  const dayItems=Array.from({length:14},()=>new Set<string>());(allCompletions||[]).forEach((r:any)=>{const d=Number(r.day);if(d>=1&&d<=14&&!String(r.task_id).includes(':sub:')&&Number(r.points||0)>=0)dayItems[d-1].add(String(r.task_id));});setDayProgress(dayItems.map(s=>s.size));const pts=Array(14).fill(0);(allCompletions||[]).forEach((r:any)=>{const d=Number(r.day);if(d>=1&&d<=14)pts[d-1]+=Number(r.points||0);});setDayPoints(pts);
   const {data:cm}=await client.from('crew_members').select('user_id').eq('crew_id',selected.id);
   const memberIds=(cm||[]).map((x:any)=>x.user_id);
   const {data:people}=await client.from('profiles').select('id,name,avatar_path').in('id',memberIds);
@@ -179,6 +239,7 @@ export default function App(){
   const {data:shared}=await client.from('shared_tasks').select('id,title,points,created_by,created_at,shared_proofs(id,user_id,photo_path,created_at,shared_proof_reviews(id,reviewer_id,approved,note))').eq('crew_id',selected.id).order('created_at',{ascending:false});
   if(shared){const enriched=await Promise.all(shared.map(async(t:any)=>({...t,shared_proofs:await Promise.all((t.shared_proofs||[]).map(async(p:any)=>{const {data}=await client.storage.from('proofs').createSignedUrl(p.photo_path,3600);return {...p,signedUrl:data?.signedUrl||null,reviews:p.shared_proof_reviews||[]};}))})));setSharedTasks(enriched);}
   await refreshStats(selected.id,userId);
+  await loadStreaks(selected.id);
  };
  useEffect(()=>{loadCrew();},[userId,activeCrewId]);
  useEffect(()=>{if(!supabase||!crew)return;const ch=supabase.channel('crew-'+crew.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'crew_id=eq.'+crew.id},p=>setMessages(old=>old.some(m=>m.id===(p.new as Msg).id)?old:[...old,p.new as Msg])).subscribe();return()=>{supabase?.removeChannel(ch);};},[crew?.id]);
@@ -336,13 +397,13 @@ export default function App(){
   {brandHeader('YOUR 14-DAY CHALLENGE')}
   <View style={{marginBottom:18}}>{header('One day at a time','Make it','count.')}<Text style={{color:C.muted,marginTop:7,fontSize:14}}>Your goals. Your pace. Your challenge.</Text></View>
   <Card style={{padding:17,marginBottom:22}}>
-   <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><View><Text style={styles.eyebrow}>CHALLENGE PROGRESS</Text><Text style={{color:C.fg,fontSize:25,fontWeight:'900',marginTop:5}}>Day {day} <Text style={{color:C.muted,fontSize:15,fontWeight:'600'}}>of {crew?.days||14}</Text></Text><Text style={{color:C.muted,fontSize:11,marginTop:3}}>{dayProgress.slice(Math.max(0,currentDay-7),currentDay).filter(n=>n>0).length}/7 active days this week</Text></View><View style={[styles.ring,{width:72,height:72,borderRadius:38,borderColor:C.accent,borderWidth:6}]}><Text style={{color:C.fg,fontSize:16,fontWeight:'900'}}>{Math.round((day/(crew?.days||14))*100)}%</Text></View></View>
-   <Pressable onPressIn={()=>setProgressPeek(true)} onPressOut={()=>setProgressPeek(false)} onLongPress={()=>setShowDays(true)} delayLongPress={350} style={{marginTop:17}}>
+   <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><View><Text style={styles.eyebrow}>CHALLENGE PROGRESS</Text><Text style={{color:C.fg,fontSize:25,fontWeight:'900',marginTop:5}}>{completedDays} <Text style={{color:C.muted,fontSize:15,fontWeight:'600'}}>of {totalDays} days</Text></Text><Text style={{color:C.muted,fontSize:11,marginTop:3}}>Today is day {currentDay} · a day counts when all its tasks are done</Text></View><View style={[styles.ring,{width:72,height:72,borderRadius:38,borderColor:C.accent,borderWidth:6}]}><Text style={{color:C.fg,fontSize:16,fontWeight:'900'}}>{completedPct}%</Text></View></View>
+   <Pressable onLongPress={()=>setProgressPeek(true)} onPressOut={()=>setProgressPeek(false)} delayLongPress={300} style={{marginTop:17}}>
     <View style={{flexDirection:'row',justifyContent:'space-between',marginBottom:7}}><Text style={{color:C.fg,fontSize:12,fontWeight:'800'}}>Hold to preview all days</Text><TouchableOpacity onPress={()=>setShowDays(true)}><Text style={{color:C.accent,fontSize:12,fontWeight:'900'}}>See all days →</Text></TouchableOpacity></View>
-    <View style={[styles.track,{height:10,backgroundColor:C.card2}]}><View style={[styles.fill,{height:10,width:(Math.round((day/(crew?.days||14))*100)+'%') as `${number}%`,backgroundColor:C.accent}]}/></View>
+    <View style={[styles.track,{height:10,backgroundColor:C.card2}]}><Animated.View style={[styles.fill,{height:10,width:fillAnim.interpolate({inputRange:[0,100],outputRange:['0%','100%'],extrapolate:'clamp'}),backgroundColor:C.accent}]}/></View>
    </Pressable>
    <Animated.View style={{height:progressAnim.interpolate({inputRange:[0,1],outputRange:[0,68]}),opacity:progressAnim,overflow:'hidden'}}><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{alignItems:'center',paddingTop:11,gap:7}}>
-    {Array.from({length:crew?.days||14},(_,i)=>i+1).map(d=><View key={d} style={{width:37,height:43,borderRadius:12,alignItems:'center',justifyContent:'center',backgroundColor:d===day?C.accent:C.card2}}><Text style={{color:d===day?C.accentInk:C.fg,fontWeight:'900'}}>{d}</Text><View style={{width:5,height:5,borderRadius:3,marginTop:3,backgroundColor:(dayProgress[d-1]||0)>0?(d===day?C.accentInk:C.accent):C.muted}}/></View>)}
+    {Array.from({length:crew?.days||14},(_,i)=>i+1).map(d=><View key={d} style={{width:37,height:43,borderRadius:12,alignItems:'center',justifyContent:'center',backgroundColor:d===day?C.accent:C.card2}}><Text style={{color:d===day?C.accentInk:C.fg,fontWeight:'900'}}>{d}</Text><View style={{width:5,height:5,borderRadius:3,marginTop:3,backgroundColor:(tasks.length>0&&(dayProgress[d-1]||0)>=tasks.length)?(d===day?C.accentInk:C.accent):C.muted}}/></View>)}
    </ScrollView></Animated.View>
   </Card>
   <Section title="Your personal tasks" right="See all" onRight={()=>setShowDays(true)}/>
@@ -365,23 +426,23 @@ export default function App(){
   {brandHeader('YOUR PROGRESS')}{header('Your stats','Built by','consistency.')}<Text style={{color:C.muted,marginTop:7,marginBottom:18}}>Track your progress, keep going!</Text>
   <View style={styles.tiles}>
    {[
-    {v:completed+'/'+tasks.length,l:'Tasks done',icon:'checkmark-circle',color:C.accent,action:()=>setTab('Home')},
-    {v:String(streak),l:'Day streak',icon:'flame',color:C.flame,action:()=>setShowDays(true)},
-    {v:String(members.length),l:'Crew members',icon:'people',color:'#AAB7D6',action:()=>setTab('Crew')},
-    {v:String(totalEarned),l:'Total points',icon:'trophy',color:'#F4C84A',action:()=>setTab('Crew')}
+    {v:completed+'/'+tasks.length,l:'Tasks done',icon:'checkmark-circle',color:C.accent,action:()=>setStatSheet('tasks')},
+    {v:String(streak),l:'Day streak',icon:'flame',color:C.flame,action:()=>setStatSheet('streak')},
+    {v:String(members.length),l:'Crew members',icon:'people',color:'#AAB7D6',action:()=>setStatSheet('members')},
+    {v:String(totalEarned),l:'Total points',icon:'trophy',color:'#F4C84A',action:()=>setStatSheet('points')}
    ].map((x:any)=><TouchableOpacity key={x.l} onPress={x.action} style={[styles.card,styles.statTile,{backgroundColor:C.card,borderColor:C.line,minHeight:98}]}><View style={{flexDirection:'row',alignItems:'center',gap:10}}><Ionicons name={x.icon as any} size={27} color={x.color}/><View style={{flex:1}}><Text style={{color:C.fg,fontSize:24,fontWeight:'900'}}>{x.v}</Text><Text style={{color:C.muted,fontSize:11}}>{x.l}</Text></View><Ionicons name="chevron-forward" size={15} color={C.muted}/></View></TouchableOpacity>)}
   </View>
-  <Section title="Challenge progress" right="14-day view" onRight={()=>setShowDays(true)}/>
-  <Card style={{padding:17}}><View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><Text style={{color:C.fg,fontWeight:'900',fontSize:16}}>Your challenge</Text><Text style={{color:C.muted,fontSize:12}}>Day <Text style={{color:C.accent,fontWeight:'900'}}>{currentDay}</Text> of {crew?.days||14}</Text></View>
+  <Section title="Challenge progress" right="14-day view" onRight={()=>setStatSheet('progress')}/>
+  <Pressable onPress={()=>setStatSheet('progress')}><Card style={{padding:17}}><View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><Text style={{color:C.fg,fontWeight:'900',fontSize:16}}>Your challenge</Text><Text style={{color:C.muted,fontSize:12}}>Day <Text style={{color:C.accent,fontWeight:'900'}}>{currentDay}</Text> of {crew?.days||14}</Text></View>
    <View style={{flexDirection:'row',alignItems:'center',gap:18,marginTop:14}}><View style={{width:112,height:112,borderRadius:60,borderWidth:10,borderColor:C.accent,alignItems:'center',justifyContent:'center',backgroundColor:C.card2}}><Text style={{color:C.fg,fontSize:25,fontWeight:'900'}}>{Math.round((currentDay/(crew?.days||14))*100)}%</Text><Text style={{color:C.muted,fontSize:9}}>TIME ELAPSED</Text></View><View style={{flex:1}}><Text style={{color:C.fg,fontWeight:'900',fontSize:16}}>{daysLeft>0?daysLeft+' days left':'Challenge complete'}</Text><Text style={{color:C.muted,fontSize:12,lineHeight:18,marginTop:5}}>You have completed {completed} of your {tasks.length} personal tasks today.</Text><TouchableOpacity onPress={()=>setTab('Home')} style={{marginTop:10}}><Text style={{color:C.accent,fontWeight:'900'}}>Go to today's tasks →</Text></TouchableOpacity></View></View>
    <View style={[styles.track,{height:9,backgroundColor:C.card2,marginTop:17}]}><View style={[styles.fill,{height:9,width:(Math.round((currentDay/(crew?.days||14))*100)+'%') as `${number}%`,backgroundColor:C.accent}]}/></View>
-  </Card>
-  <Section title="Your performance" right="This week"/>
-  <Card style={{padding:16}}><View style={{height:148,flexDirection:'row',alignItems:'flex-end',justifyContent:'space-around'}}>
+  </Card></Pressable>
+  <Section title="Your performance" right="This week" onRight={()=>setStatSheet('week')}/>
+  <Pressable onPress={()=>setStatSheet('week')}><Card style={{padding:16}}><View style={{height:148,flexDirection:'row',alignItems:'flex-end',justifyContent:'space-around'}}>
    {weeklyPoints.map((v,i)=>{const max=Math.max(10,...weeklyPoints);return <View key={i} style={{alignItems:'center',height:'100%',justifyContent:'flex-end',flex:1,gap:7}}><View style={{width:24,height:Math.max(7,Math.round((v/max)*104)),backgroundColor:C.accent,borderRadius:7,opacity:v?1:.22}}/><Text style={{color:C.muted,fontSize:10}}>{weekLabels[i]}</Text></View>;})}
-  </View><Text style={{color:C.muted,fontSize:11,marginTop:12}}>{weekPoints} points earned this week from completed tasks.</Text></Card>
+  </View><Text style={{color:C.muted,fontSize:11,marginTop:12}}>{weekPoints} points earned this week from completed tasks. Tap for details.</Text></Card></Pressable>
   <Section title="Quick insights"/><View style={{flexDirection:'row',gap:8}}>
-   {[{icon:'flash',v:String(weekPoints),l:'Weekly points',color:'#F4C84A'},{icon:'medal',v:myRank?('#'+myRank):'—',l:'Crew rank',color:C.accent},{icon:'calendar',v:String(daysLeft),l:'Days remaining',color:'#AAB7D6'}].map((x:any)=><View key={x.l} style={[styles.card,{flex:1,backgroundColor:C.card,borderColor:C.line,padding:12}]}><Ionicons name={x.icon as any} size={22} color={x.color}/><Text style={{color:C.fg,fontWeight:'900',fontSize:18,marginTop:8}}>{x.v}</Text><Text style={{color:C.muted,fontSize:10}}>{x.l}</Text></View>)}
+   {[{icon:'flash',v:String(weekPoints),l:'Weekly points',color:'#F4C84A',a:()=>setStatSheet('week')},{icon:'medal',v:myRank?('#'+myRank):'—',l:'Crew rank',color:C.accent,a:()=>setTab('Crew')},{icon:'calendar',v:String(daysLeft),l:'Days remaining',color:'#AAB7D6',a:()=>setStatSheet('progress')}].map((x:any)=><TouchableOpacity key={x.l} onPress={x.a} style={[styles.card,{flex:1,backgroundColor:C.card,borderColor:C.line,padding:12}]}><Ionicons name={x.icon as any} size={22} color={x.color}/><Text style={{color:C.fg,fontWeight:'900',fontSize:18,marginTop:8}}>{x.v}</Text><Text style={{color:C.muted,fontSize:10}}>{x.l}</Text></TouchableOpacity>)}
   </View>
   <TouchableOpacity onPress={()=>setTab('Crew')} style={[styles.cta,{backgroundColor:C.card2}]}><Text style={{color:C.fg,fontWeight:'900'}}>Open your crew →</Text></TouchableOpacity>
  </>;
@@ -512,11 +573,55 @@ export default function App(){
   </Card></>}
   <Text style={{color:C.muted,fontSize:10,textAlign:'center',marginTop:20}}>SONIUM · VERSION 0.2.0</Text>
  </>;
+ const dayDate=(d:number)=>{const base=crew?.start_date?new Date(crew.start_date+'T00:00:00'):new Date();base.setDate(base.getDate()+d-1);return base;};
+ const statBody=()=>{
+  const line={flexDirection:'row' as const,alignItems:'center' as const,paddingVertical:10,gap:10,borderBottomWidth:1,borderBottomColor:C.line};
+  if(statSheet==='tasks')return <>
+   <Text style={{color:C.muted,fontSize:12,marginBottom:8}}>{completed} of {tasks.length} personal tasks done on day {day}.</Text>
+   {tasks.length?tasks.map(t=>{const on=done.includes(t.id);return <View key={t.id} style={line}><Ionicons name={on?'checkmark-circle':'ellipse-outline'} size={22} color={on?C.accent:C.muted}/><Text style={{color:on?C.muted:C.fg,flex:1,fontWeight:'800',textDecorationLine:on?'line-through':'none'}}>{t.title}</Text><Text style={{color:C.accent,fontWeight:'900'}}>+{t.points}</Text></View>;}):<Text style={{color:C.muted}}>No personal tasks yet. Add some from Home.</Text>}
+   <TouchableOpacity onPress={()=>{setStatSheet(null);setTab('Home');}} style={[styles.cta,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>Go to today's tasks →</Text></TouchableOpacity></>;
+  if(statSheet==='streak')return <>
+   <View style={{flexDirection:'row',alignItems:'center',gap:12,marginBottom:10}}><Ionicons name="flame" size={40} color={C.flame}/><View><Text style={{color:C.fg,fontSize:28,fontWeight:'900'}}>{streak} {streak===1?'day':'days'}</Text><Text style={{color:C.muted,fontSize:11}}>In a row with at least one completed task</Text></View></View>
+   <Text style={{color:C.fg,fontWeight:'900',marginTop:8}}>Your habit streaks</Text>
+   {streaks.length?streaks.map(st=><View key={st.id} style={line}><Ionicons name={st.icon as any} size={21} color={C.accent}/><Text style={{color:C.fg,flex:1,fontWeight:'800'}}>{st.title}</Text><Text style={{color:C.flame,fontWeight:'900'}}>{streakRun(st.id)} 🔥</Text></View>):<Text style={{color:C.muted,fontSize:12,marginTop:6}}>No habit streaks yet.</Text>}
+   <TouchableOpacity onPress={()=>{setStatSheet(null);setShowDays(true);}} style={[styles.cta,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>Open streaks →</Text></TouchableOpacity></>;
+  if(statSheet==='members'){const rows=board.length?board:members.map(m=>({user_id:m.user_id,name:m.name,points:0}));return <>
+   <Text style={{color:C.muted,fontSize:12,marginBottom:8}}>{members.length} members in {crew?.name||'your crew'}. Ranked by total points.</Text>
+   {rows.map((p:any,i:number)=><View key={p.user_id} style={line}><Text style={{color:C.accent,fontWeight:'900',width:24}}>#{i+1}</Text><Text style={{color:C.fg,flex:1,fontWeight:p.user_id===userId?'900':'700'}}>{p.name}{p.user_id===userId?' · You':''}</Text><Text style={{color:C.accent,fontWeight:'900'}}>{Number(p.points||0).toLocaleString()} pts</Text></View>)}
+   <TouchableOpacity onPress={()=>{setStatSheet(null);setTab('Crew');}} style={[styles.cta,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>Open your crew →</Text></TouchableOpacity></>;}
+  if(statSheet==='points')return <>
+   <Text style={{color:C.fg,fontSize:34,fontWeight:'900'}}>{totalEarned.toLocaleString()} <Text style={{color:C.muted,fontSize:14}}>points</Text></Text>
+   <Text style={{color:C.muted,fontSize:12,marginBottom:6}}>Points you earned on each challenge day.</Text>
+   {Array.from({length:Math.min(currentDay,totalDays)},(_,i)=>i+1).reverse().map(d=><View key={d} style={line}><Text style={{color:C.fg,flex:1,fontWeight:'800'}}>Day {d}</Text><Text style={{color:(dayPoints[d-1]||0)>0?C.accent:C.muted,fontWeight:'900'}}>+{dayPoints[d-1]||0}</Text></View>)}</>;
+  if(statSheet==='progress')return <>
+   <Text style={{color:C.muted,fontSize:12,marginBottom:10}}>{completedDays} of {totalDays} days fully completed · {daysLeft} days left.</Text>
+   <View style={{flexDirection:'row',flexWrap:'wrap',gap:8}}>
+    {Array.from({length:totalDays},(_,i)=>i+1).map(d=>{const full=tasks.length>0&&(dayProgress[d-1]||0)>=tasks.length;const part=(dayProgress[d-1]||0)>0;const future=d>currentDay;return <TouchableOpacity key={d} onPress={()=>{setStatSheet(null);loadDayRecords(d);setShowDays(true);}} disabled={future} style={{width:'22%',borderRadius:14,padding:10,alignItems:'center',backgroundColor:full?C.accent:C.card2,opacity:future?.4:1,borderWidth:d===currentDay?2:0,borderColor:C.accent}}>
+     <Text style={{color:full?C.accentInk:C.fg,fontWeight:'900',fontSize:17}}>{d}</Text><Text style={{color:full?C.accentInk:C.muted,fontSize:9}}>{future?'LOCKED':full?'DONE':part?'PARTIAL':'MISSED'}</Text><Text style={{color:full?C.accentInk:C.muted,fontSize:9,marginTop:2}}>{dayPoints[d-1]||0} pts</Text></TouchableOpacity>;})}
+   </View></>;
+  if(statSheet==='week'){
+   const end=currentDay-7*weekOffset;const days=Array.from({length:7},(_,i)=>end-6+i);const vals=days.map(d=>d>=1&&d<=totalDays?(dayPoints[d-1]||0):0);const max=Math.max(10,...vals);
+   return <>
+    <View style={{flexDirection:'row',gap:7,marginBottom:12}}>{[0,1].map(o=><TouchableOpacity key={o} onPress={()=>setWeekOffset(o)} style={[styles.themeChoice,{backgroundColor:weekOffset===o?C.accent:C.card2}]}><Text style={{color:weekOffset===o?C.accentInk:C.fg,fontWeight:'800'}}>{o===0?'This week':'Last week'}</Text></TouchableOpacity>)}</View>
+    <Text style={{color:C.fg,fontSize:30,fontWeight:'900'}}>{vals.reduce((a,b)=>a+b,0)} <Text style={{color:C.muted,fontSize:13}}>points</Text></Text>
+    <View style={{height:150,flexDirection:'row',alignItems:'flex-end',justifyContent:'space-around',marginTop:12}}>
+     {days.map((d,i)=><View key={d} style={{alignItems:'center',height:'100%',justifyContent:'flex-end',flex:1,gap:6}}><Text style={{color:C.muted,fontSize:9}}>{vals[i]||''}</Text><View style={{width:24,height:Math.max(7,Math.round((vals[i]/max)*100)),backgroundColor:C.accent,borderRadius:7,opacity:vals[i]?1:.22}}/><Text style={{color:C.muted,fontSize:10}}>{dayDate(d).toLocaleDateString('en-US',{weekday:'short'})}</Text></View>)}
+    </View></>;}
+  return null;
+ };
  const screen=tab==='Home'?<Home/>:tab==='Stats'?<Stats/>:tab==='Crew'?<CrewView/>:<Settings/>;
  if(loading)return <SafeAreaView style={{flex:1,backgroundColor:C.bg,alignItems:'center',justifyContent:'center'}}><ActivityIndicator color={C.accent}/><Text style={{color:C.muted,marginTop:12}}>Preparing your challenge...</Text></SafeAreaView>;
- return <SafeAreaView style={{flex:1,backgroundColor:C.bg}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{screen}</ScrollView><View style={[styles.nav,{backgroundColor:C.card,borderColor:C.line}]}>{(['Home','Stats','Crew','Settings'] as Tab[]).map((t,i)=><TouchableOpacity key={t} accessibilityRole="button" accessibilityLabel={t} onPress={()=>setTab(t)} style={[styles.navItem,{backgroundColor:tab===t?C.accent:'transparent'}]}><Ionicons name={((['home','stats-chart','people','settings'] as const)[i]) as any} size={23} color={tab===t?C.accentInk:C.muted}/><Text style={{fontSize:11,fontWeight:'900',color:tab===t?C.accentInk:C.muted}}>{t}</Text></TouchableOpacity>)}</View>{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
+ return <SafeAreaView style={{flex:1,backgroundColor:C.bg}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{screen}</ScrollView><FloatingTabBar active={tab} onChange={k=>setTab(k as Tab)} colors={{card:C.card,line:C.line,accent:C.accent,accentInk:C.accentInk,muted:C.muted}} tabs={[{key:'Home',label:'Home',icon:'home-outline',iconActive:'home'},{key:'Stats',label:'Stats',icon:'stats-chart-outline',iconActive:'stats-chart'},{key:'Crew',label:'Crew',icon:'people-outline',iconActive:'people'},{key:'Settings',label:'Settings',icon:'settings-outline',iconActive:'settings'}]}/>{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
+ <Modal visible={statSheet!==null} animationType="slide" transparent onRequestClose={()=>setStatSheet(null)}>
+  <Pressable style={styles.scrim} onPress={()=>setStatSheet(null)}>
+   <Pressable style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'88%'}]} onPress={()=>{}}>
+    <View style={styles.sheetHead}><View style={{flex:1}}><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>{statSheet==='tasks'?'Tasks done':statSheet==='streak'?'Day streak':statSheet==='members'?'Crew members':statSheet==='points'?'Total points':statSheet==='progress'?'Challenge progress':'Your performance'}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>SONIUM · Make today count</Text></View><TouchableOpacity onPress={()=>setStatSheet(null)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
+    <ScrollView style={{flexGrow:0}} showsVerticalScrollIndicator={false}>{statBody()}</ScrollView>
+   </Pressable>
+  </Pressable>
+ </Modal>
  <Modal visible={showDays} animationType="slide" transparent onRequestClose={()=>setShowDays(false)}>
-  <View style={styles.scrim}><View style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'90%'}]}>
+  <Pressable style={styles.scrim} onPress={()=>setShowDays(false)}><Pressable style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'90%'}]} onPress={()=>{}}>
    <View style={styles.sheetHead}><View><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>Your challenge days</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>Choose a day to view its personal tasks</Text></View><TouchableOpacity onPress={()=>setShowDays(false)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{maxHeight:62,flexGrow:0}} contentContainerStyle={{alignItems:'center',paddingBottom:8}}>
     {Array.from({length:crew?.days||14},(_,i)=>i+1).map(d=><TouchableOpacity key={d} onPress={()=>loadDayRecords(d)} style={[styles.dayBtn,{width:47,height:53,backgroundColor:day===d?C.accent:C.card2,borderWidth:1,borderColor:day===d?C.accent:C.line}]}>
@@ -527,8 +632,22 @@ export default function App(){
    <ScrollView keyboardShouldPersistTaps="handled" style={{flexGrow:0,maxHeight:390}}>
     {tasks.length?tasks.map(t=><TaskRow key={t.id} task={t}/>):<Text style={{color:C.muted,fontSize:12,textAlign:'center',padding:18}}>No personal tasks have been added to this crew yet.</Text>}
    </ScrollView>
+   <View style={{marginTop:12}}>
+    <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+     <View style={{flexDirection:'row',alignItems:'center',gap:7}}><Ionicons name="flame" size={19} color={C.flame}/><Text style={{color:C.fg,fontWeight:'900'}}>Streaks</Text><Text style={{color:C.muted,fontSize:10}}>no points</Text></View>
+     <TouchableOpacity onPress={openStreakEditor}><Text style={{color:C.accent,fontWeight:'900',fontSize:12}}>Add +</Text></TouchableOpacity>
+    </View>
+    <ScrollView keyboardShouldPersistTaps="handled" style={{flexGrow:0,maxHeight:190}}>
+     {streaks.length?streaks.map(st=>{const on=streakChecks.some(c=>c.streak_id===st.id&&c.day===day);const run=streakRun(st.id);return <Pressable key={st.id} onPress={()=>toggleStreak(st)} onLongPress={()=>deleteStreak(st)} delayLongPress={450} style={[styles.task,{backgroundColor:C.card,borderColor:C.line}]}>
+      <View style={{width:29,height:29,borderRadius:9,backgroundColor:C.card2,alignItems:'center',justifyContent:'center'}}><Ionicons name={st.icon as any} size={19} color={on?C.accent:C.muted}/></View>
+      <View style={[styles.check,{borderColor:on?C.accent:C.muted,backgroundColor:on?C.accent:'transparent'}]}>{on&&<Ionicons name="checkmark" size={16} color={C.accentInk}/>}</View>
+      <View style={{flex:1}}><Text style={{color:on?C.muted:C.fg,fontWeight:'800'}}>{st.title}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>{run} day streak · {streakWeek(st.id,day)}{st.weekly_target?'/'+st.weekly_target:''} this week · Hold to delete</Text></View>
+      <Ionicons name="flame" size={18} color={run>0?C.flame:C.muted}/>
+     </Pressable>;}):<Text style={{color:C.muted,fontSize:12,textAlign:'center',padding:12}}>Track habits like shower, prayer or gaming. They never give points.</Text>}
+    </ScrollView>
+   </View>
    <TouchableOpacity style={[styles.cta,{backgroundColor:C.accent}]} onPress={()=>setShowDays(false)}><Text style={{color:C.accentInk,fontWeight:'900'}}>Done</Text></TouchableOpacity>
-  </View></View>
+  </Pressable></Pressable>
  </Modal>
  <Modal visible={showPrayers} animationType="slide" transparent onRequestClose={()=>setShowPrayers(false)}>
   <View style={styles.scrim}><View style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'88%'}]}>
@@ -548,9 +667,16 @@ export default function App(){
  <Modal visible={modal!==null} animationType="slide" transparent onRequestClose={()=>setModal(null)}>
   <Pressable style={styles.scrim} onPress={()=>setModal(null)}>
    <Pressable style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'90%'}]} onPress={()=>{}}>
-    <View style={styles.sheetHead}><View style={{flex:1}}><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>{modal==='task'?(activeTask?'Edit personal task':'New personal task'):modal==='create'?'Create a crew':modal==='join'?'Join a crew':modal==='account'?'Account & recovery':modal==='report'?'Report a member':'Privacy & moderation'}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>SONIUM · Make today count</Text></View><TouchableOpacity onPress={()=>setModal(null)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
+    <View style={styles.sheetHead}><View style={{flex:1}}><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>{modal==='streak'?'New streak':modal==='task'?(activeTask?'Edit personal task':'New personal task'):modal==='create'?'Create a crew':modal==='join'?'Join a crew':modal==='account'?'Account & recovery':modal==='report'?'Report a member':'Privacy & moderation'}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>SONIUM · Make today count</Text></View><TouchableOpacity onPress={()=>setModal(null)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
     <ScrollView keyboardShouldPersistTaps="handled" style={{flexGrow:0}}>
-     {modal==='task'?<>
+     {modal==='streak'?<>
+      <Text style={{color:C.muted,fontSize:11,marginBottom:6}}>STREAK NAME · NO POINTS</Text>
+      <TextInput value={streakTitle} onChangeText={setStreakTitle} maxLength={40} placeholder="e.g. Shower" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line}]}/>
+      <View style={{flexDirection:'row',flexWrap:'wrap',gap:7,marginTop:10}}>{STREAK_IDEAS.map(i=><TouchableOpacity key={i.title} onPress={()=>{setStreakTitle(i.title);setStreakIcon(i.icon);}} style={[styles.smallBtn,{backgroundColor:streakTitle===i.title?C.accent:C.card2}]}><Text style={{color:streakTitle===i.title?C.accentInk:C.fg,fontSize:11,fontWeight:'800'}}>{i.title}</Text></TouchableOpacity>)}</View>
+      <Text style={{color:C.muted,fontSize:11,marginTop:13,marginBottom:6}}>WEEKLY TARGET · 0–7 (0 = every day, no target)</Text>
+      <TextInput value={streakTarget} onChangeText={setStreakTarget} keyboardType="number-pad" placeholder="0" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line}]}/>
+      <TouchableOpacity onPress={saveStreak} style={[styles.cta,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>Add streak</Text></TouchableOpacity>
+     </>:modal==='task'?<>
       <Text style={{color:C.muted,fontSize:11,marginBottom:6}}>TASK NAME</Text>
       <TextInput value={taskTitle} onChangeText={setTaskTitle} maxLength={80} placeholder="e.g. Read 20 minutes" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line}]}/>
       <Text style={{color:C.muted,fontSize:11,marginTop:12,marginBottom:6}}>DESCRIPTION (OPTIONAL)</Text>
