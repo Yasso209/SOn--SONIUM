@@ -225,8 +225,6 @@ export default function App(){
   {text:'Cancel',style:'cancel'},
   {text:'Delete',style:'destructive',onPress:async()=>{
    if(!supabase||!userId||!crew)return;
-   await supabase.from('completions').delete().eq('user_id',userId).eq('crew_id',crew.id).like('task_id',task.id+':sub:%');
-   await supabase.from('completions').delete().eq('user_id',userId).eq('crew_id',crew.id).eq('task_id',task.id);
    const {error}=await supabase.from('personal_tasks').delete().eq('id',task.id).eq('user_id',userId);
    if(error){toast(error.message);return;}
    const scheduled=await Notifications.getAllScheduledNotificationsAsync();for(const n of scheduled){if(String(n.content.data?.taskId||'')===task.id)await Notifications.cancelScheduledNotificationAsync(n.identifier);}
