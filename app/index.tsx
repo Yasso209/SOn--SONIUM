@@ -532,14 +532,13 @@ export default function App(){
    </Card>
    <Section title="Crew leaderboard"/>
    <Card>{board.length?board.map((p,i)=><View key={p.user_id} style={{flexDirection:'row',paddingVertical:9,gap:10,alignItems:'center',borderBottomWidth:i===board.length-1?0:1,borderBottomColor:C.line}}><Text style={{color:C.accent,fontWeight:'900',width:22}}>#{i+1}</Text><Text style={{color:C.fg,flex:1,fontWeight:p.user_id===userId?'900':'600'}}>{p.name}{p.user_id===userId?' · You':''}</Text><Text style={{color:C.accent,fontWeight:'900'}}>{Number(p.points||0).toLocaleString()} pts</Text></View>):<Text style={{color:C.muted}}>Points appear here after tasks are completed.</Text>}</Card>
-   <Section title="Crew activity"/>
-   <Card>{messages.slice(-3).reverse().map(m=><View key={String(m.id)} style={{paddingVertical:8,borderBottomWidth:1,borderBottomColor:C.line}}><Text style={{color:C.fg,fontSize:12}}><Text style={{fontWeight:'900'}}>{m.user_id===userId?'You':members.find(x=>x.user_id===m.user_id)?.name||'Member'}</Text> {m.body||m.sticker}</Text><Text style={{color:C.muted,fontSize:9,marginTop:3}}>{new Date(m.created_at).toLocaleString()}</Text></View>)}{messages.length===0&&<Text style={{color:C.muted,fontSize:12}}>Your crew activity will show here.</Text>}</Card>
    <Section title="Shared crew tasks"/>
    <Card style={{padding:15}}>
     <Text style={{color:C.muted,fontSize:11,lineHeight:17}}>These tasks are shared by the whole crew. Each member submits a photo, then other members review whether the proof is valid.</Text>
     <TextInput value={newSharedTask} onChangeText={setNewSharedTask} maxLength={40} placeholder="Create a shared task..." placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card2,borderColor:C.line,marginTop:12}]}/>
     <TouchableOpacity onPress={createSharedTask} style={[styles.smallBtn,{backgroundColor:C.accent,marginTop:8,alignItems:'center'}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>+ Add shared task · 20 pts</Text></TouchableOpacity>
     {sharedTasks.map(t=><View key={t.id} style={{paddingVertical:13,borderBottomWidth:1,borderBottomColor:C.line}}>
+      {t.title===getWeeklyVerdictTitle()&&<Text style={{color:C.accent,fontSize:9,fontWeight:'900',letterSpacing:1,marginBottom:5}}>WEEKLY VERDICT · THIS WEEK</Text>}
      <View style={{flexDirection:'row',alignItems:'center',gap:8}}><Text style={{color:C.fg,fontWeight:'900',flex:1}}>{t.title}</Text><Text style={{color:C.accent,fontWeight:'900'}}>+{t.points} pts</Text></View>
      <Text style={{color:C.muted,fontSize:10,marginTop:4}}>{(t.shared_proofs||[]).length} member proofs submitted</Text>
      {(t.shared_proofs||[]).map((p:any)=>{
@@ -559,13 +558,14 @@ export default function App(){
     </View>)}
     {sharedTasks.length===0&&<Text style={{color:C.muted,fontSize:12,textAlign:'center',padding:12}}>No shared tasks yet. Add the first crew challenge above.</Text>}
    </Card>
-   <Section title="Weekly verdict"/>
-   <Card><Text style={{color:C.fg,fontWeight:'800'}}>Choose the crew penalty</Text><View style={{flexDirection:'row',gap:7,marginTop:10}}>{(['treat','judge','custom'] as const).map(v=><TouchableOpacity key={v} onPress={()=>saveCrew({penalty:v})} style={[styles.themeChoice,{backgroundColor:crew.penalty===v?C.accent:C.card2}]}><Text style={{color:crew.penalty===v?C.accentInk:C.fg,fontWeight:'800'}}>{v}</Text></TouchableOpacity>)}</View>{crew.penalty==='custom'&&<View style={{flexDirection:'row',gap:7,marginTop:9}}><TextInput value={penaltyCustom} onChangeText={setPenaltyCustom} placeholder={crew.penalty_custom||'Custom penalty'} placeholderTextColor={C.muted} style={[styles.input,{flex:1,color:C.fg,backgroundColor:C.card2,borderColor:C.line}]}/><TouchableOpacity onPress={()=>saveCrew({penalty_custom:penaltyCustom.trim()})} style={[styles.smallBtn,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk}}>Save</Text></TouchableOpacity></View>}</Card>
-   <Section title="Crew chat" right="Privacy" onRight={()=>setModal('privacy')}/>
-   <Card><View style={{height:220}}><ScrollView contentContainerStyle={{gap:9}}>{messages.map(m=><View key={String(m.id)} style={{alignSelf:m.user_id===userId?'flex-end':'flex-start',maxWidth:'85%'}}><Text style={{color:C.muted,fontSize:10}}>{m.user_id===userId?'You':members.find(x=>x.user_id===m.user_id)?.name||'Member'}</Text><View style={{backgroundColor:m.user_id===userId?C.accent:C.card2,borderRadius:13,padding:9}}>{m.body&&<Text style={{color:m.user_id===userId?C.accentInk:C.fg}}>{m.body}</Text>}{m.sticker&&<Text style={{fontSize:26}}>{m.sticker}</Text>}</View></View>)}</ScrollView></View>
-    <View style={{flexDirection:'row',gap:7,marginTop:10}}><TextInput value={message} onChangeText={setMessage} placeholder="Write a message..." placeholderTextColor={C.muted} style={[styles.input,{flex:1,color:C.fg,backgroundColor:C.card2,borderColor:C.line}]} onSubmitEditing={()=>sendMessage(message)}/><TouchableOpacity onPress={()=>sendMessage(message)} style={[styles.send,{backgroundColor:C.accent}]}><Ionicons name="send" color={C.accentInk}/></TouchableOpacity></View>
-    <View style={{flexDirection:'row',justifyContent:'space-around',marginTop:9}}>{STICKERS.map(s=><TouchableOpacity key={s} onPress={()=>sendMessage('',s)}><Text style={{fontSize:21}}>{s}</Text></TouchableOpacity>)}</View>
-   </Card>
+    <Section title="Weekly verdict"/>
+    <Card style={{padding:15}}>
+     <Text style={{color:C.fg,fontSize:15,fontWeight:'900'}}>{getWeeklyVerdictTitle().replace(/^Weekly Verdict · /,'').replace(/ · \d{4}-W\d{2}$/,'')}</Text>
+     <Text style={{color:C.muted,fontSize:11,lineHeight:18,marginTop:7}}>This week's challenge is automatically added to Shared crew tasks above. Everyone submits a photo, and every other crew member must approve it before the crew points count.</Text>
+     <Text style={{color:C.accent,fontSize:10,fontWeight:'900',marginTop:9}}>{sharedTasks.find(t=>t.title===getWeeklyVerdictTitle())?((sharedTasks.find(t=>t.title===getWeeklyVerdictTitle()).shared_proofs||[]).length+' member proofs submitted'):'Preparing this week’s shared task…'}</Text>
+    </Card>
+    <Section title="Crew activity" right={crewActivityExpanded?'Hide':'Show'} onRight={()=>setCrewActivityExpanded(v=>!v)}/>
+    {crewActivityExpanded&&<Card>{messages.slice(-3).reverse().map(m=><View key={String(m.id)} style={{paddingVertical:8,borderBottomWidth:1,borderBottomColor:C.line}}><Text style={{color:C.fg,fontSize:12}}><Text style={{fontWeight:'900'}}>{m.user_id===userId?'You':members.find(x=>x.user_id===m.user_id)?.name||'Member'}</Text> {m.body||m.sticker}</Text><Text style={{color:C.muted,fontSize:9,marginTop:3}}>{new Date(m.created_at).toLocaleString()}</Text></View>)}{messages.length===0&&<Text style={{color:C.muted,fontSize:12}}>Your crew activity will show here.</Text>}</Card>}
    <TouchableOpacity onPress={leaveCrew} style={[styles.smallBtn,{backgroundColor:C.card2,alignSelf:'center',marginTop:18}]}><Text style={{color:C.muted,fontWeight:'800'}}>Leave this crew</Text></TouchableOpacity>
   </>:<Card style={{marginTop:20,alignItems:'center',padding:22}}>
    <Ionicons name="people-outline" size={38} color={C.accent}/><Text style={{color:C.fg,fontSize:18,fontWeight:'900',marginTop:10}}>No crew yet</Text><Text style={{color:C.muted,textAlign:'center',fontSize:12,marginTop:6}}>Create a crew or join your friends with an invite code.</Text>
