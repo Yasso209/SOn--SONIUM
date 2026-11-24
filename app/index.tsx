@@ -1,5 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Image, Modal, Pressable, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Platform, Switch, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Keyboard, KeyboardAvoidingView, Modal, Pressable, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Platform, Switch, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { useFonts } from 'expo-font';
+import * as FileSystem from 'expo-file-system/legacy';
+import { decode } from 'base64-arraybuffer';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -49,6 +52,9 @@ export default function App(){
  const [progressPeek,setProgressPeek]=useState(false);
  const progressAnim=useRef(new Animated.Value(0)).current;
  const [proofReviewBusy,setProofReviewBusy]=useState<string|null>(null);
+ const [proofUploadBusy,setProofUploadBusy]=useState<string|null>(null);
+ const [keyboardVisible,setKeyboardVisible]=useState(false);
+ const [fontsLoaded]=useFonts(Ionicons.font);
  const [day,setDay]=useState(1);
  const [currentDay,setCurrentDay]=useState(1);
  const [challengeActive,setChallengeActive]=useState(true);
@@ -99,7 +105,12 @@ export default function App(){
  const myRank=Math.max(0,board.findIndex(p=>p.user_id===userId)+1);
  const daysLeft=crew?Math.max(0,(crew.days||14)-currentDay):14-currentDay;
  const online=Boolean(isSupabaseConfigured&&userId);
- const toast=(s:string)=>{setNotice(s);setTimeout(()=>setNotice(''),2500);};
+ const toast=(s:string)=>{setNotice(s);setTimeout(()=>setNotice(''),3000);};
+ const readLocalImageBuffer=async(uri:string)=>{
+  const base64=await FileSystem.readAsStringAsync(uri,{encoding:FileSystem.EncodingType.Base64});
+  if(!base64)throw new Error('Could not read the selected image. Try choosing it again.');
+  return decode(base64);
+ };
  const saveLocal=async(patch:Record<string,unknown>)=>{const raw=await AsyncStorage.getItem(STORE);await AsyncStorage.setItem(STORE,JSON.stringify({...(raw ? JSON.parse(raw) : {}), ...patch}));};
 
  useEffect(()=>{let active=true;(async()=>{try{
@@ -113,6 +124,11 @@ export default function App(){
  }catch(e:any){toast(e?.message||'Could not start SONIUM');}finally{if(active)setLoading(false);}})();return()=>{active=false;};},[]);
  useEffect(()=>{saveLocal({name,avatar,done,subtaskDone,themeMode}).catch(()=>{});},[name,avatar,done,subtaskDone,themeMode]);
  useEffect(()=>{Animated.spring(progressAnim,{toValue:progressPeek?1:0,useNativeDriver:false,friction:8,tension:75}).start();},[progressPeek,progressAnim]);
+ useEffect(()=>{
+  const show=Keyboard.addListener('keyboardDidShow',()=>setKeyboardVisible(true));
+  const hide=Keyboard.addListener('keyboardDidHide',()=>setKeyboardVisible(false));
+  return()=>{show.remove();hide.remove();};
+ },[]);
  const refreshStats=async(cId:string,uid:string)=>{
   if(!supabase)return;
   const since=new Date();since.setDate(since.getDate()-6);since.setHours(0,0,0,0);
@@ -283,8 +299,9 @@ export default function App(){
     if(avatar&&/^(file:|content:)/.test(avatar)){
      const ext=avatar.toLowerCase().includes('.png')?'png':avatar.toLowerCase().includes('.webp')?'webp':'jpg';
      const path=userId+'/profile-'+Date.now()+'.'+ext;
-     const blob=await(await fetch(avatar)).blob();
-     const {error:uploadError}=await supabase.storage.from('avatars').upload(path,blob,{contentType:ext==='png'?'image/png':ext==='webp'?'image/webp':'image/jpeg',upsert:false});
+     const imageBytes=await readLocalImageBuffer(avatar);
+     if(imageBytes.byteLength>5*1024*1024)throw new Error('Profile photo must be 5 MB or smaller.');
+     const {error:uploadError}=await supabase.storage.from('avatars').upload(path,imageBytes,{contentType:ext==='png'?'image/png':ext==='webp'?'image/webp':'image/jpeg',cacheControl:'3600',upsert:false});
      if(uploadError)throw uploadError;savedPath=path;
     }
     const {error}=await supabase.from('profiles').update({name:value,avatar_path:savedPath}).eq('id',userId);
@@ -312,7 +329,46 @@ export default function App(){
  const adminDeleteCrew=async(crewId:string)=>Alert.alert('Delete crew?','This removes the crew and its challenge data.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:async()=>{if(!supabase)return;const {error}=await supabase.rpc('admin_delete_crew',{p_crew_id:crewId});if(error)toast(error.message);else{setAdminCrews(old=>old.filter(c=>c.id!==crewId));toast('Crew deleted');}}}]);
  const submitReport=async()=>{if(!supabase||!userId||!crew||!reportUser)return;const {data,error}=await supabase.from('reports').insert({reporter_id:userId,reported_id:reportUser,crew_id:crew.id,reason:reportReason,note:reportNote.trim()||null}).select('id').single();if(error){toast(error.message);return;}const result=await supabase.functions.invoke('notify-report',{body:{report_id:data.id}});toast(result.error?'Report saved; email alert is not configured yet':'Report sent for review');setModal(null);setReportUser('');setReportNote('');};
  const createSharedTask=async()=>{if(!newSharedTask.trim()||!supabase||!userId||!crew)return;const {error}=await supabase.from('shared_tasks').insert({crew_id:crew.id,title:newSharedTask.trim().slice(0,40),points:20,created_by:userId});if(error)toast(error.message);else{setNewSharedTask('');await loadCrew();toast('Crew task added');}};
- const submitProof=async(taskId:string)=>{if(!supabase||!userId||!crew)return;const p=await ImagePicker.requestCameraPermissionsAsync();if(!p.granted)return toast('Camera permission is needed');const picked=await ImagePicker.launchCameraAsync({mediaTypes:['images'],allowsEditing:true,quality:.8});if(picked.canceled)return;try{const asset=picked.assets[0];const ext=asset.mimeType?.includes('png')?'png':'jpg';const path=crew.id+'/'+userId+'/'+Date.now()+'.'+ext;const blob=await(await fetch(asset.uri)).blob();const {error:uploadError}=await supabase.storage.from('proofs').upload(path,blob,{contentType:asset.mimeType||'image/jpeg',upsert:false});if(uploadError)throw uploadError;const {error}=await supabase.from('shared_proofs').insert({shared_task_id:taskId,crew_id:crew.id,user_id:userId,photo_path:path});if(error)throw error;await loadCrew();toast('Proof submitted · waiting for crew approval');}catch(e:any){toast(e?.message||'Could not upload proof');}};
+ const submitProof=async(taskId:string,source:'camera'|'library'='camera')=>{
+  if(!supabase||!userId||!crew)return;
+  try{
+   let picked:ImagePicker.ImagePickerResult;
+   if(source==='camera'){
+    const permission=await ImagePicker.requestCameraPermissionsAsync();
+    if(!permission.granted){toast('Allow camera access to take a proof photo.');return;}
+    picked=await ImagePicker.launchCameraAsync({mediaTypes:['images'],allowsEditing:true,quality:0.55});
+   }else{
+    const permission=await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if(!permission.granted){toast('Allow photo-library access to choose a proof image.');return;}
+    picked=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:true,quality:0.55});
+   }
+   if(picked.canceled)return;
+   const asset=picked.assets?.[0];
+   if(!asset?.uri){toast('The selected image could not be opened.');return;}
+   setProofUploadBusy(taskId);
+   const mime=asset.mimeType||'image/jpeg';
+   const ext=mime.includes('png')?'png':mime.includes('webp')?'webp':'jpg';
+   const path=crew.id+'/'+userId+'/'+Date.now()+'.'+ext;
+   const imageBytes=await readLocalImageBuffer(asset.uri);
+   if(imageBytes.byteLength>10*1024*1024)throw new Error('This image is over 10 MB. Choose a smaller photo.');
+   const {error:uploadError}=await supabase.storage.from('proofs').upload(path,imageBytes,{contentType:mime,cacheControl:'3600',upsert:false});
+   if(uploadError)throw uploadError;
+   const {error:recordError}=await supabase.from('shared_proofs').insert({shared_task_id:taskId,crew_id:crew.id,user_id:userId,photo_path:path});
+   if(recordError){await supabase.storage.from('proofs').remove([path]);throw recordError;}
+   await loadCrew();
+   toast('Photo uploaded · waiting for crew approval');
+  }catch(e:any){
+   toast(e?.message||'Could not upload this photo. Check your connection and try again.');
+  }finally{
+   setProofUploadBusy(null);
+  }
+ };
+ const chooseProofSource=(taskId:string)=>Alert.alert('Add photo proof','Choose how to attach your proof photo.',[
+  {text:'Take a photo',onPress:()=>submitProof(taskId,'camera')},
+  {text:'Choose from gallery',onPress:()=>submitProof(taskId,'library')},
+  {text:'Cancel',style:'cancel'}
+ ]);
+
  const saveAccount=async()=>{if(!supabase||!email.includes('@'))return toast('Enter a valid email address');const {data:current,error:getError}=await supabase.auth.getUser();if(getError||!current.user)return toast(getError?.message||'Sign in again first');const verified=Boolean(current.user.email_confirmed_at)&&current.user.email?.toLowerCase()===email.trim().toLowerCase();setAccountVerified(verified);if(!verified){const {data,error}=await supabase.auth.updateUser({email:email.trim()});if(error){toast(error.message);return;}setAccountEmail(email.trim());toast('Confirmation email sent. Confirm it, then return here to set your password.');return;}if(password.length<8)return toast('After confirming your email, enter a password of at least 8 characters');const {error}=await supabase.auth.updateUser({password});if(error)toast(error.message);else{setPassword('');setAccountEmail(email.trim());setAccountVerified(true);toast('Password saved · your account is now recoverable');}};
  const signIn=async()=>{if(!supabase||!email.includes('@')||!password)return;const {data,error}=await supabase.auth.signInWithPassword({email:email.trim(),password});if(error)toast(error.message);else{setUserId(data.user.id);setAccountEmail(data.user.email||email.trim());setAccountVerified(Boolean(data.user.email_confirmed_at));const {data:p}=await supabase.from('profiles').select('name,avatar_path').eq('id',data.user.id).maybeSingle();if(p?.name)setName(p.name);if(p?.avatar_path){setAvatarPath(p.avatar_path);const {data:a}=await supabase.storage.from('avatars').createSignedUrl(p.avatar_path,3600);if(a?.signedUrl)setAvatar(a.signedUrl);}setModal(null);setPassword('');toast('Account restored and synced');}};
  const Card=({children,style}:any)=><View style={[styles.card,{backgroundColor:C.card,borderColor:C.line},style]}>{children}</View>;
@@ -424,7 +480,7 @@ export default function App(){
       const reviews=p.reviews||[];const yes=reviews.filter((v:any)=>v.approved).length;const no=reviews.filter((v:any)=>!v.approved).length;const required=Math.max(0,members.length-1);const approved=reviews.length===required&&yes===required;const myVote=reviews.find((v:any)=>v.reviewer_id===userId);
       return <View key={p.id} style={{marginTop:11,padding:10,borderRadius:14,backgroundColor:C.card2}}>
        <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><Text style={{color:C.fg,fontSize:11,fontWeight:'900'}}>{members.find(m=>m.user_id===p.user_id)?.name||'Crew member'}'s proof</Text><Text style={{color:C.muted,fontSize:9}}>{new Date(p.created_at||Date.now()).toLocaleDateString()}</Text></View>
-       {p.signedUrl&&<Image source={{uri:p.signedUrl}} style={{width:'100%',height:190,borderRadius:10,marginTop:8}} resizeMode="cover"/>}
+       {p.signedUrl&&<Image source={{uri:p.signedUrl}} style={{width:'100%',height:190,borderRadius:10,marginTop:8}} resizeMode="cover" onError={()=>toast('Could not load this proof image. Pull to refresh and try again.')}/>}
        <View style={{flexDirection:'row',justifyContent:'space-between',marginTop:8}}><Text style={{color:C.accent,fontSize:10,fontWeight:'800'}}>✓ {yes} approve</Text><Text style={{color:C.flame,fontSize:10,fontWeight:'800'}}>✕ {no} reject</Text></View>
        <Text style={{color:approved?C.accent:no?C.flame:C.muted,fontSize:10,fontWeight:'900',marginTop:7}}>{approved?'APPROVED · +'+t.points+' crew points':no>0?'NOT APPROVED · redo required':(required-reviews.length)+' member reviews remaining'}</Text>
        {p.user_id!==userId?<View style={{flexDirection:'row',gap:8,marginTop:8}}>
@@ -433,7 +489,7 @@ export default function App(){
        </View>:<Text style={{color:C.muted,fontSize:10,marginTop:7}}>Your proof · other crew members can review it.</Text>}
       </View>;
      })}
-     {!(t.shared_proofs||[]).some((p:any)=>p.user_id===userId)&&<TouchableOpacity onPress={()=>submitProof(t.id)} style={[styles.smallBtn,{backgroundColor:C.accent,alignSelf:'flex-start',marginTop:9}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>Take photo proof →</Text></TouchableOpacity>}
+     {!(t.shared_proofs||[]).some((p:any)=>p.user_id===userId)&&<TouchableOpacity disabled={proofUploadBusy===t.id} onPress={()=>chooseProofSource(t.id)} style={[styles.smallBtn,{backgroundColor:C.accent,alignSelf:'flex-start',marginTop:9,opacity:proofUploadBusy===t.id?0.55:1}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>{proofUploadBusy===t.id?'Uploading photo…':'Add photo proof →'}</Text></TouchableOpacity>}
     </View>)}
     {sharedTasks.length===0&&<Text style={{color:C.muted,fontSize:12,textAlign:'center',padding:12}}>No shared tasks yet. Add the first crew challenge above.</Text>}
    </Card>
@@ -513,8 +569,8 @@ export default function App(){
   <Text style={{color:C.muted,fontSize:10,textAlign:'center',marginTop:20}}>SONIUM · VERSION 0.2.0</Text>
  </>;
  const screen=tab==='Home'?<Home/>:tab==='Stats'?<Stats/>:tab==='Crew'?<CrewView/>:<Settings/>;
- if(loading)return <SafeAreaView style={{flex:1,backgroundColor:C.bg,alignItems:'center',justifyContent:'center'}}><ActivityIndicator color={C.accent}/><Text style={{color:C.muted,marginTop:12}}>Preparing your challenge...</Text></SafeAreaView>;
- return <SafeAreaView style={{flex:1,backgroundColor:C.bg}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{screen}</ScrollView><View style={[styles.nav,{backgroundColor:C.card,borderColor:C.line}]}>{(['Home','Stats','Crew','Settings'] as Tab[]).map((t,i)=><TouchableOpacity key={t} accessibilityRole="button" accessibilityLabel={t} onPress={()=>setTab(t)} style={[styles.navItem,{backgroundColor:tab===t?C.accent:'transparent'}]}><Ionicons name={((['home','stats-chart','people','settings'] as const)[i]) as any} size={23} color={tab===t?C.accentInk:C.muted}/><Text style={{fontSize:11,fontWeight:'900',color:tab===t?C.accentInk:C.muted}}>{t}</Text></TouchableOpacity>)}</View>{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
+ if(loading||!fontsLoaded)return <SafeAreaView style={{flex:1,backgroundColor:C.bg,alignItems:'center',justifyContent:'center'}}><ActivityIndicator color={C.accent}/><Text style={{color:C.muted,marginTop:12}}>Preparing your challenge...</Text></SafeAreaView>;
+ return <KeyboardAvoidingView style={{flex:1}} behavior="padding"><SafeAreaView style={{flex:1,backgroundColor:C.bg}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><ScrollView keyboardShouldPersistTaps="always" keyboardDismissMode="on-drag" contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{screen}</ScrollView>{!keyboardVisible&&<View style={[styles.nav,{backgroundColor:C.card,borderColor:C.line}]}>{(['Home','Stats','Crew','Settings'] as Tab[]).map((t,i)=><TouchableOpacity key={t} accessibilityRole="button" accessibilityLabel={t} onPress={()=>setTab(t)} style={[styles.navItem,{backgroundColor:tab===t?C.accent:'transparent'}]}><Ionicons name={((['home','stats-chart','people','settings'] as const)[i]) as any} size={23} color={tab===t?C.accentInk:C.muted}/><Text style={{fontSize:11,fontWeight:'900',color:tab===t?C.accentInk:C.muted}}>{t}</Text></TouchableOpacity>)}</View>}{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
  <Modal visible={showDays} animationType="slide" transparent onRequestClose={()=>setShowDays(false)}>
   <View style={styles.scrim}><View style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'90%'}]}>
    <View style={styles.sheetHead}><View><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>Your challenge days</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>Choose a day to view its personal tasks</Text></View><TouchableOpacity onPress={()=>setShowDays(false)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
@@ -545,11 +601,13 @@ export default function App(){
    </View>
   </View></View>
  </Modal>
- <Modal visible={modal!==null} animationType="slide" transparent onRequestClose={()=>setModal(null)}>
-  <Pressable style={styles.scrim} onPress={()=>setModal(null)}>
-   <Pressable style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'90%'}]} onPress={()=>{}}>
+ <Modal visible={modal!==null} animationType="slide" transparent statusBarTranslucent={false} onRequestClose={()=>{Keyboard.dismiss();setModal(null);}}>
+  <View style={styles.scrim}>
+   <Pressable style={StyleSheet.absoluteFillObject} onPress={()=>{Keyboard.dismiss();setModal(null);}} />
+   <KeyboardAvoidingView pointerEvents="box-none" behavior="padding" style={{flex:1,justifyContent:'flex-end'}}>
+    <View style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'88%'}]}>
     <View style={styles.sheetHead}><View style={{flex:1}}><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>{modal==='task'?(activeTask?'Edit personal task':'New personal task'):modal==='create'?'Create a crew':modal==='join'?'Join a crew':modal==='account'?'Account & recovery':modal==='report'?'Report a member':'Privacy & moderation'}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>SONIUM · Make today count</Text></View><TouchableOpacity onPress={()=>setModal(null)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
-    <ScrollView keyboardShouldPersistTaps="handled" style={{flexGrow:0}}>
+    <ScrollView keyboardShouldPersistTaps="always" keyboardDismissMode="on-drag" nestedScrollEnabled style={{flexShrink:1,maxHeight:'72%'}} >
      {modal==='task'?<>
       <Text style={{color:C.muted,fontSize:11,marginBottom:6}}>TASK NAME</Text>
       <TextInput value={taskTitle} onChangeText={setTaskTitle} maxLength={80} placeholder="e.g. Read 20 minutes" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line}]}/>
@@ -593,10 +651,11 @@ export default function App(){
       <TouchableOpacity onPress={()=>setModal(null)} style={[styles.cta,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>I understand</Text></TouchableOpacity>
      </>}
     </ScrollView>
-   </Pressable>
-  </Pressable>
+    </View>
+   </KeyboardAvoidingView>
+  </View>
  </Modal>
- </SafeAreaView>;
+ </SafeAreaView></KeyboardAvoidingView>;
 }
 
 const styles=StyleSheet.create({top:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:26},brand:{flexDirection:'row',alignItems:'center',gap:10},logo:{width:38,height:38,borderRadius:12,alignItems:'center',justifyContent:'center'},card:{borderWidth:1,borderRadius:19,padding:14},section:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginTop:25,marginBottom:10},sectionTitle:{fontSize:18,fontWeight:'900'},eyebrow:{fontSize:10,fontWeight:'800',letterSpacing:1,color:'#9ba292'},ring:{width:65,height:65,borderRadius:33,borderWidth:6,alignItems:'center',justifyContent:'center'},track:{height:7,borderRadius:8,overflow:'hidden'},fill:{height:7,borderRadius:8},task:{minHeight:51,borderWidth:1,borderRadius:15,paddingHorizontal:12,paddingVertical:10,flexDirection:'row',alignItems:'center',gap:11,marginBottom:8},check:{width:24,height:24,borderRadius:12,borderWidth:2,alignItems:'center',justifyContent:'center'},cta:{padding:14,borderRadius:30,alignItems:'center',justifyContent:'center',marginTop:10},tiles:{flexDirection:'row',flexWrap:'wrap',gap:9,marginTop:20},statTile:{width:'48%',minHeight:108},nav:{position:'absolute',bottom:10,alignSelf:'center',width:'94%',borderWidth:1,borderRadius:40,padding:6,flexDirection:'row',justifyContent:'space-around',elevation:16},navItem:{alignItems:'center',justifyContent:'center',gap:4,paddingHorizontal:10,paddingVertical:8,borderRadius:30,minWidth:70,flex:1},smallBtn:{paddingHorizontal:13,paddingVertical:10,borderRadius:13},memberAvatar:{width:34,height:34,borderRadius:18,alignItems:'center',justifyContent:'center'},avatar:{width:58,height:58,borderRadius:30,borderWidth:1,alignItems:'center',justifyContent:'center'},settingLine:{height:1,backgroundColor:'rgba(150,150,150,0.16)',marginVertical:13},themeChoice:{flex:1,alignItems:'center',padding:9,borderRadius:12},input:{borderWidth:1,borderRadius:13,paddingHorizontal:13,paddingVertical:12,fontSize:14},send:{width:38,height:38,borderRadius:19,alignItems:'center',justifyContent:'center'},scrim:{flex:1,backgroundColor:'rgba(0,0,0,0.65)',justifyContent:'flex-end'},sheet:{borderTopLeftRadius:26,borderTopRightRadius:26,padding:19,paddingBottom:30,maxHeight:'88%'},sheetHead:{flexDirection:'row',alignItems:'center',justifyContent:'space-between',marginBottom:16},dayBtn:{width:45,height:48,borderRadius:13,alignItems:'center',justifyContent:'center',marginRight:7},toast:{position:'absolute',bottom:95,alignSelf:'center',paddingHorizontal:15,paddingVertical:10,borderRadius:25,elevation:10}});
