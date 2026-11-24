@@ -231,6 +231,7 @@ export default function App(){
  const [proofUploadBusy,setProofUploadBusy]=useState<string|null>(null);
  const [keyboardVisible,setKeyboardVisible]=useState(false);
  const [refreshing,setRefreshing]=useState(false);
+ const refreshRotation=useRef(new Animated.Value(0)).current;
  const screenFade=useRef(new Animated.Value(1)).current;
  const [fontsLoaded]=useFonts(Ionicons.font);
  const [day,setDay]=useState(1);
@@ -597,7 +598,7 @@ export default function App(){
   </Pressable>;
  };
  const header=(kicker:string,title:string,accent:string)=><><Text style={{color:C.muted,fontSize:11,fontWeight:'800',letterSpacing:1.5,marginBottom:6}}>{kicker.toUpperCase()}</Text><Text style={{color:C.fg,fontSize:30,fontWeight:'900'}}>{title}<Text style={{color:C.accent,fontStyle:'italic'}}> {accent}</Text></Text></>;
- const brandHeader=(subtitle:string)=><View style={[styles.top,{marginBottom:20}]}><View style={styles.brand}><View style={[styles.logo,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontSize:22,fontWeight:'900'}}>S.</Text></View><View><Text style={{color:C.fg,fontSize:20,fontWeight:'900',letterSpacing:1}}>SONIUM</Text><Text style={{color:C.muted,fontSize:10}}>{subtitle}</Text></View></View><TouchableOpacity onPress={()=>setTab('Settings')} style={[styles.avatar,{backgroundColor:C.card2,borderColor:C.line,width:44,height:44}]}>{avatar?<Image source={{uri:avatar}} style={{width:42,height:42,borderRadius:22}}/>:<Ionicons name="person" size={21} color={C.fg}/>}</TouchableOpacity></View>;
+ const brandHeader=(subtitle:string)=><View style={[styles.top,{marginBottom:20}]}><View style={styles.brand}><View style={[styles.logo,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontSize:22,fontWeight:'900'}}>S.</Text></View><View><Text style={{color:C.fg,fontSize:20,fontWeight:'900',letterSpacing:1}}>SONIUM</Text><Text style={{color:C.muted,fontSize:10}}>{subtitle}</Text></View></View><TouchableOpacity onPress={()=>setTab('Settings')} style={[styles.avatar,{backgroundColor:C.card2,borderColor:C.line,width:44,height:44,overflow:'hidden'}]}>{avatar?<Image source={{uri:avatar}} style={{width:42,height:42,borderRadius:22}}/>:<Image source={mascot} style={{width:42,height:42,borderRadius:22}} resizeMode="cover"/>}</TouchableOpacity></View>;
  const Home=()=><>
   {brandHeader('YOUR 14-DAY CHALLENGE')}
   <View style={{marginBottom:18}}>{header('One day at a time','Make it','count.')}<Text style={{color:C.muted,marginTop:7,fontSize:14}}>Your goals. Your pace. Your challenge.</Text></View>
@@ -721,7 +722,7 @@ export default function App(){
   {header('Make it yours','Your','SONIUM.')}
   <Card style={{marginTop:18,padding:16}}>
    <View style={{flexDirection:'row',alignItems:'center',gap:13}}>
-    <TouchableOpacity onPress={pickAvatar} style={[styles.avatar,{width:66,height:66,borderRadius:34,backgroundColor:C.card2,borderColor:C.accent,overflow:'hidden'}]}>{avatar?<Image source={{uri:avatar}} style={{width:64,height:64,borderRadius:32}}/>:<Ionicons name="person" size={28} color={C.fg}/>}</TouchableOpacity>
+    <TouchableOpacity onPress={pickAvatar} style={[styles.avatar,{width:66,height:66,borderRadius:34,backgroundColor:C.card2,borderColor:C.accent,overflow:'hidden'}]}>{avatar?<Image source={{uri:avatar}} style={{width:64,height:64,borderRadius:32}}/>:<Image source={mascot} style={{width:64,height:64,borderRadius:32}} resizeMode="cover"/>}</TouchableOpacity>
     <View style={{flex:1}}><Text style={{color:C.fg,fontSize:18,fontWeight:'900'}}>{name}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>{online?'Profile synced with Supabase':'Local profile · not synced'}</Text><TouchableOpacity onPress={()=>{setProfileEdit(true);}} style={{marginTop:5}}><Text style={{color:C.accent,fontSize:11,fontWeight:'900'}}>Edit profile · Change photo</Text></TouchableOpacity></View>
     <Ionicons name="create-outline" color={C.accent} size={22}/>
    </View>
@@ -769,9 +770,12 @@ export default function App(){
  const refreshApp=async()=>{
   if(refreshing)return;
   setRefreshing(true);
+  refreshRotation.setValue(0);
+  const spin=Animated.loop(Animated.timing(refreshRotation,{toValue:1,duration:460,useNativeDriver:true}));
+  spin.start();
   try{await loadCrew();toast('SONIUM refreshed');}
   catch(e:any){toast(e?.message||'Could not refresh right now');}
-  finally{setRefreshing(false);}
+  finally{spin.stop();refreshRotation.stopAnimation();refreshRotation.setValue(0);setRefreshing(false);}
  };
  useEffect(()=>{
   screenFade.setValue(0.72);
@@ -779,7 +783,7 @@ export default function App(){
  },[tab,screenFade]);
  const screen=tab==='Home'?<Home/>:tab==='Stats'?<Stats/>:tab==='Crew'?<CrewView/>:<Settings/>;
  if(loading||!fontsLoaded)return <SafeAreaView style={{flex:1,backgroundColor:C.bg,alignItems:'center',justifyContent:'center'}}><ActivityIndicator color={C.accent}/><Text style={{color:C.muted,marginTop:12}}>Preparing your challenge...</Text></SafeAreaView>;
- return <KeyboardAvoidingView style={{flex:1}} enabled={Platform.OS==='ios'} behavior={Platform.OS==='ios'?'padding':undefined}><SafeAreaView style={{flex:1,backgroundColor:C.bg,direction:language==='ar'?'rtl':'ltr'}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><Animated.View style={{flex:1,opacity:screenFade}}><ScrollView keyboardShouldPersistTaps="always" keyboardDismissMode="on-drag" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshApp} tintColor={C.accent} colors={[C.accent]} progressBackgroundColor={C.card}/>} contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{screen}</ScrollView></Animated.View>{!keyboardVisible&&<View style={[styles.nav,{backgroundColor:C.card,borderColor:C.line}]}>{(['Home','Stats','Crew','Settings'] as Tab[]).map((t,i)=><TouchableOpacity key={t} accessibilityRole="button" accessibilityLabel={t} onPress={()=>setTab(t)} style={[styles.navItem,{backgroundColor:tab===t?C.accent:'transparent'}]}><Ionicons name={((['home','stats-chart','people','settings'] as const)[i]) as any} size={23} color={tab===t?C.accentInk:C.muted}/><Text style={{fontSize:11,fontWeight:'900',color:tab===t?C.accentInk:C.muted}}>{t}</Text></TouchableOpacity>)}</View>}{tab==='Crew'&&crew&&!keyboardVisible&&!chatOpen&&<TouchableOpacity accessibilityLabel="Open crew chat" onPress={()=>setChatOpen(true)} style={[styles.chatFab,{backgroundColor:C.accent}]}><Ionicons name="chatbubbles" size={23} color={C.accentInk}/></TouchableOpacity>}{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
+ return <KeyboardAvoidingView style={{flex:1}} enabled={Platform.OS==='ios'} behavior={Platform.OS==='ios'?'padding':undefined}><SafeAreaView style={{flex:1,backgroundColor:C.bg,direction:language==='ar'?'rtl':'ltr'}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><Animated.View style={{flex:1,opacity:screenFade}}><ScrollView keyboardShouldPersistTaps="always" keyboardDismissMode="on-drag" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshApp} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent"/>} contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{refreshing&&<View style={{alignItems:'center',paddingBottom:10}}><Animated.Image source={mascot} resizeMode="contain" style={{width:34,height:34,transform:[{rotate:refreshRotation.interpolate({inputRange:[0,1],outputRange:['0deg','360deg']})}]}}/></View>}{screen}</ScrollView></Animated.View>{!keyboardVisible&&<View style={[styles.nav,{backgroundColor:C.card,borderColor:C.line}]}>{(['Home','Stats','Crew','Settings'] as Tab[]).map((t,i)=><TouchableOpacity key={t} accessibilityRole="button" accessibilityLabel={t} onPress={()=>setTab(t)} style={[styles.navItem,{backgroundColor:tab===t?C.accent:'transparent'}]}><Ionicons name={((['home','stats-chart','people','settings'] as const)[i]) as any} size={23} color={tab===t?C.accentInk:C.muted}/><Text style={{fontSize:11,fontWeight:'900',color:tab===t?C.accentInk:C.muted}}>{t}</Text></TouchableOpacity>)}</View>}{tab==='Crew'&&crew&&!keyboardVisible&&!chatOpen&&<TouchableOpacity accessibilityLabel="Open crew chat" onPress={()=>setChatOpen(true)} style={[styles.chatFab,{backgroundColor:C.accent}]}><Ionicons name="chatbubbles" size={23} color={C.accentInk}/></TouchableOpacity>}{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
  <Modal visible={showDays} animationType="slide" transparent onRequestClose={()=>setShowDays(false)}>
   <View style={styles.scrim}><View style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'90%'}]}>
    <View style={styles.sheetHead}><View><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>Your challenge days</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>Choose a day to view its personal tasks</Text></View><TouchableOpacity onPress={()=>setShowDays(false)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
