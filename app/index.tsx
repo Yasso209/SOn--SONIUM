@@ -154,10 +154,11 @@ export default function App(){
   const list=(cs||[]) as Crew[];setCrews(list);
   const selected=list.find(c=>c.id===activeCrewId)||list[0];if(!selected)return;
   setCrew(selected);setActiveCrewId(selected.id);
-  const startDate=new Date(selected.start_date+'T00:00:00');const today=new Date();today.setHours(0,0,0,0);
-  const elapsed=Math.floor((today.getTime()-startDate.getTime())/86400000)+1;
-  const activeDay=Math.max(1,Math.min(selected.days||14,elapsed));
-  setCurrentDay(activeDay);setDay(activeDay);setChallengeActive(elapsed>=1&&elapsed<=(selected.days||14));
+  const {data:serverDay,error:serverDayError}=await client.rpc('challenge_day',{c:selected.id});
+  const elapsed=serverDayError?0:Number(serverDay);
+  if(serverDayError)toast('Could not sync the challenge day. Refresh and try again.');
+  const activeDay=Math.max(1,Math.min(selected.days||14,elapsed||1));
+  setCurrentDay(activeDay);setDay(activeDay);setChallengeActive(!serverDayError&&elapsed>=1&&elapsed<=(selected.days||14));
   const [{data:taskRows},{data:checks},{data:allCompletions}]=await Promise.all([
    client.from('personal_tasks').select('id,user_id,crew_id,title,details,points,icon,subtasks,reminder_enabled,reminder_time,sort_order').eq('crew_id',selected.id).eq('user_id',userId).order('sort_order').order('created_at'),
    client.from('completions').select('task_id').eq('crew_id',selected.id).eq('user_id',userId).eq('day',activeDay),
