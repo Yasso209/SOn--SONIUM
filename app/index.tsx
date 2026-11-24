@@ -590,27 +590,19 @@ export default function App(){
    <Text style={{color:C.muted,fontSize:11,lineHeight:18,marginTop:6}}>{accountVerified?'Your email is confirmed and your password is linked. Use this email and password to restore the same SONIUM profile on another phone.':accountEmail?'We sent a verification email. Confirm it, then return here and enter your password to finish linking.':'Your progress is currently tied to this device session. Link an email and password to restore it if you change phones.'}</Text>
    <TouchableOpacity onPress={()=>setModal('account')} style={[styles.smallBtn,{backgroundColor:C.accent,alignSelf:'flex-start',marginTop:11}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>{accountVerified?'Update password':accountEmail?'Set password after verification':'Link email & password'}</Text></TouchableOpacity>
   </Card>
-  <Section title="Your personal tasks" right="Add task +" onRight={()=>openTaskEditor()}/>
-  <Card style={{padding:14}}>
-   {tasks.length===0?<Text style={{color:C.muted,fontSize:12}}>No personal tasks yet. Create your first one from Home.</Text>:tasks.map(t=><View key={t.id} style={{paddingVertical:10,borderBottomWidth:1,borderBottomColor:C.line}}>
-    <View style={{flexDirection:'row',alignItems:'center',gap:9}}>
-     <Ionicons name={t.icon as any} size={21} color={C.accent}/>
-     <View style={{flex:1}}><Text style={{color:C.fg,fontWeight:'800'}}>{t.title}</Text><Text style={{color:C.muted,fontSize:10,marginTop:2}}>{t.points} points · {t.subtasks.length} steps · {t.reminder_enabled?'Reminder '+(t.reminder_time||''):'No reminder'}</Text></View>
-     <Switch value={t.reminder_enabled} onValueChange={v=>toggleTaskReminder(t,v)} trackColor={{true:C.accent,false:C.card2}}/>
-     <TouchableOpacity onPress={()=>openTaskEditor(t)} style={{padding:5}}><Ionicons name="create-outline" color={C.accent} size={20}/></TouchableOpacity>
-    </View>
-   </View>)}
-  </Card>
   <Section title="Preferences"/>
   <Card style={{padding:16}}>
    <Text style={{color:C.fg,fontWeight:'800'}}>Appearance</Text>
-   <View style={{flexDirection:'row',gap:7,marginTop:9}}>{(['dark','light','system'] as ThemeMode[]).map(m=><TouchableOpacity key={m} onPress={()=>setThemeMode(m)} style={[styles.themeChoice,{backgroundColor:themeMode===m?C.accent:C.card2}]}><Text style={{color:themeMode===m?C.accentInk:C.fg,fontWeight:'800'}}>{m}</Text></TouchableOpacity>)}</View>
+    <View style={{flexDirection:'row',gap:7,marginTop:9}}>{(['dark','light','system'] as ThemeMode[]).map(m=><TouchableOpacity key={m} onPress={()=>setThemeMode(m)} style={[styles.themeChoice,{backgroundColor:themeMode===m?C.accent:C.card2}]}><Text style={{color:themeMode===m?C.accentInk:C.fg,fontWeight:'800'}}>{m==='dark'?(language==='ar'?'داكن':'Dark'):m==='light'?(language==='ar'?'فاتح':'Light'):(language==='ar'?'حسب الجهاز':'System')}</Text></TouchableOpacity>)}</View>
    <View style={styles.settingLine}/>
    <Text style={{color:C.fg,fontWeight:'800'}}>Task reminder behavior</Text>
    <Text style={{color:C.muted,fontSize:11,lineHeight:17,marginTop:4}}>Each task has its own reminder switch and time. Edit a task to choose a separate time for it.</Text>
    <View style={styles.settingLine}/>
-   <Text style={{color:C.fg,fontWeight:'800'}}>Language</Text><Text style={{color:C.muted,fontSize:11,marginTop:3}}>English</Text>
-  </Card>
+    <Text style={{color:C.fg,fontWeight:'800'}}>Language</Text>
+    <View style={{flexDirection:'row',gap:8,marginTop:9}}>
+     <TouchableOpacity onPress={()=>setLanguage('en')} style={[styles.themeChoice,{backgroundColor:language==='en'?C.accent:C.card2}]}><Text style={{color:language==='en'?C.accentInk:C.fg,fontWeight:'800'}}>English</Text></TouchableOpacity>
+     <TouchableOpacity onPress={()=>setLanguage('ar')} style={[styles.themeChoice,{backgroundColor:language==='ar'?C.accent:C.card2}]}><Text style={{color:language==='ar'?C.accentInk:C.fg,fontWeight:'800'}}>العربية</Text></TouchableOpacity>
+    </View>
   <Section title="Your crews"/>
   <Card><Text style={{color:C.fg,fontWeight:'800'}}>{crew?.name||'No active crew'}</Text>
    {crews.filter(c=>c.id!==activeCrewId).map(c=><TouchableOpacity key={c.id} onPress={()=>setActiveCrewId(c.id)} style={{paddingVertical:9}}><Text style={{color:C.accent}}>Switch to · {c.name}</Text></TouchableOpacity>)}
@@ -618,11 +610,13 @@ export default function App(){
    <TouchableOpacity onPress={()=>setModal('create')} style={{marginTop:8}}><Text style={{color:C.accent,fontWeight:'800'}}>Create a new crew +</Text></TouchableOpacity>
   </Card>
   <Section title="About"/>
-  <Card><Text style={{color:C.fg,fontWeight:'800'}}>SONIUM · Developer: Yassin Mohamed</Text>
-   <TouchableOpacity onPress={()=>setModal('privacy')} style={{marginTop:12}}><Text style={{color:C.accent}}>Privacy & moderation</Text></TouchableOpacity>
-   <TouchableOpacity onPress={()=>Share.share({message:'SONIUM · Make today count.'})} style={{marginTop:12}}><Text style={{color:C.accent}}>Share SONIUM</Text></TouchableOpacity>
-   <TouchableOpacity onPress={()=>require('react-native').Linking.openURL('https://wa.me/201100322517')} style={{marginTop:12}}><Text style={{color:C.accent}}>Help & Support · WhatsApp</Text></TouchableOpacity>
-  </Card>
+   <Card style={{padding:16}}>
+    <Text style={{color:C.fg,fontSize:16,fontWeight:'900'}}>SONIUM</Text>
+    <Text style={{color:C.muted,fontSize:12,marginTop:4}}>Created by Yassin Mohamed</Text>
+    <TouchableOpacity onPress={()=>setModal('privacy')} style={{marginTop:14}}><Text style={{color:C.accent}}>Privacy & moderation</Text></TouchableOpacity>
+    <TouchableOpacity disabled={shareBusy} onPress={shareSonium} style={{marginTop:12,opacity:shareBusy?0.6:1}}><Text style={{color:C.accent,fontWeight:'800'}}>{shareBusy?'Preparing APK…':'Share SONIUM'}</Text></TouchableOpacity>
+    <TouchableOpacity onPress={()=>require('react-native').Linking.openURL('https://wa.me/201100322517')} style={{marginTop:12}}><Text style={{color:C.accent}}>Help & Support · WhatsApp</Text></TouchableOpacity>
+   </Card>
   {isAdmin&&<><Section title="Owner control"/><Card><Text style={{color:C.fg,fontWeight:'900',fontSize:16}}>Moderation dashboard</Text><Text style={{color:C.muted,fontSize:11,marginTop:3}}>{adminReports.length} reports · {adminProfiles.length} profiles</Text>
    {adminReports.slice(0,15).map(r=><View key={r.id} style={{paddingVertical:9,borderBottomWidth:1,borderBottomColor:C.line}}><Text style={{color:C.fg,fontWeight:'800'}}>Report #{r.id} · {r.reason}</Text><Text style={{color:C.muted,fontSize:11}}>{String(r.reported_id).slice(0,10)} · {r.status} · {r.note||'No details'}</Text><View style={{flexDirection:'row',gap:7,marginTop:6}}>{(['reviewing','closed'] as const).map(s=><TouchableOpacity key={s} onPress={()=>adminSetReport(r.id,s)} style={[styles.smallBtn,{backgroundColor:C.card2}]}><Text style={{color:C.fg,fontWeight:'800',fontSize:11}}>{s}</Text></TouchableOpacity>)}</View></View>)}
    <Text style={{color:C.fg,fontWeight:'900',marginTop:12}}>Accounts</Text>
