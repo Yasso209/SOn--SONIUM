@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: sonium-android-apk-${{ github.ref }}
@@ -94,3 +94,13 @@ jobs:
           path: SONIUM.apk
           if-no-files-found: error
           retention-days: 14
+
+      - name: Publish APK for in-app sharing
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: sonium-build-${{ github.run_number }}
+          name: SONIUM build ${{ github.run_number }}
+          files: SONIUM.apk
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
