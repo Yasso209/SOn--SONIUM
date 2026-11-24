@@ -23,14 +23,9 @@ const TASK_SUGGESTIONS = [
 ];
 const STICKERS=['🔥','💪','🏆','⚡','🎯','👏','🚀','💚'];
 const WEEKLY_VERDICT_PROMPTS=[
- 'Finish one small task you have been putting off',
- 'Organize your study notes',
- 'Plan next week together',
- 'Read something new for 20 minutes',
- 'Tidy your study space',
- 'Learn five new words',
- 'Share one useful thing you learned',
- 'Prepare a simple plan for tomorrow'
+ 'Finish one small task', 'Sort study notes', 'Plan next week', 'Read for 20 minutes',
+ 'Tidy your desk', 'Learn five words', 'Share a new skill', 'Plan tomorrow',
+ 'Review a new idea', 'Organize your goals', 'Try a creative task', 'Help a teammate'
 ];
 function getWeeklyVerdictTitle(){
  const now=new Date();
@@ -41,10 +36,10 @@ function getWeeklyVerdictTitle(){
  const yearStart=new Date(Date.UTC(year,0,1));
  const week=Math.ceil((((d.getTime()-yearStart.getTime())/86400000)+1)/7);
  const prompt=WEEKLY_VERDICT_PROMPTS[(year*53+week)%WEEKLY_VERDICT_PROMPTS.length];
- return 'Weekly Verdict · '+prompt+' · '+year+'-W'+String(week).padStart(2,'0');
+ return 'Weekly '+String(year).slice(-2)+'W'+String(week).padStart(2,'0')+' · '+prompt;
 }
 const AR:Record<string,string>={
- 'Finish one small task you have been putting off':'أنجز مهمة صغيرة مأجلها',
+ 'Finish one small task':'أنجز مهمة صغيرة','Sort study notes':'رتب ملاحظات المذاكرة','Plan next week':'خطط للأسبوع الجاي','Read for 20 minutes':'اقرأ لمدة 20 دقيقة','Tidy your desk':'رتب مكتبك','Learn five words':'اتعلم خمس كلمات','Share a new skill':'شارك مهارة جديدة','Plan tomorrow':'خطط لبكرة','Review a new idea':'راجع فكرة جديدة','Organize your goals':'رتب أهدافك','Try a creative task':'جرب مهمة إبداعية','Help a teammate':'ساعد زميلًا',
  'Organize your study notes':'رتب ملاحظات مذاكرتك',
  'Plan next week together':'خططوا للأسبوع الجاي مع بعض',
  'Read something new for 20 minutes':'اقرأ حاجة جديدة لمدة 20 دقيقة',
@@ -173,8 +168,8 @@ export default function App(){
  const C=isLight?colors.light:colors.dark;
  const translate=(value:string)=>{
   if(language!=='ar')return value;
-  const weekly=value.match(/^Weekly Verdict · (.+) · (\\d{4}-W\\d{2})$/);
-  if(weekly)return 'مهمة الأسبوع · '+(AR[weekly[1]]||weekly[1])+' · '+weekly[2];
+  const weekly=value.match(/^Weekly (\\d{2}W\\d{2}) · (.+)$/);
+  if(weekly)return 'مهمة الأسبوع · '+(AR[weekly[2]]||weekly[2])+' · '+weekly[1];
   return AR[value]||value;
  };
  const Text=(props:TextProps)=><NativeText {...props} style={language==='ar'?[{writingDirection:'rtl',textAlign:'right'},props.style]:props.style}>{React.Children.map(props.children,child=>typeof child==='string'?translate(child):child)}</NativeText>;
