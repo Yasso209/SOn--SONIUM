@@ -81,6 +81,7 @@ export default function App(){
  const [userId,setUserId]=useState<string|null>(null);
  const [notice,setNotice]=useState('');
  const [weeklyPoints,setWeeklyPoints]=useState<number[]>([0,0,0,0,0,0,0]);
+ const [dayProgress,setDayProgress]=useState<number[]>(Array(14).fill(0));
  const [weekLabels,setWeekLabels]=useState<string[]>(['M','T','W','T','F','S','S']);
  const [streak,setStreak]=useState(0);
  const [isAdmin,setIsAdmin]=useState(false);
@@ -161,13 +162,14 @@ export default function App(){
   const [{data:taskRows},{data:checks},{data:allCompletions}]=await Promise.all([
    client.from('personal_tasks').select('id,user_id,crew_id,title,details,points,icon,subtasks,reminder_enabled,reminder_time,sort_order').eq('crew_id',selected.id).eq('user_id',userId).order('sort_order').order('created_at'),
    client.from('completions').select('task_id').eq('crew_id',selected.id).eq('user_id',userId).eq('day',activeDay),
-   client.from('completions').select('points').eq('crew_id',selected.id).eq('user_id',userId)
+   client.from('completions').select('points,day,task_id').eq('crew_id',selected.id).eq('user_id',userId)
   ]);
   setTasks((taskRows||[]).map((t:any)=>({...t,subtasks:Array.isArray(t.subtasks)?t.subtasks:[]})) as PersonalTask[]);
   const completionIds=(checks||[]).map((x:any)=>String(x.task_id));
   setDone(completionIds.filter((id:string)=>!id.includes(':sub:')&&!id.startsWith('prayers_')));
   setSubtaskDone(completionIds.filter((id:string)=>id.includes(':sub:')));
   setTotalEarned((allCompletions||[]).reduce((sum:any,r:any)=>sum+Number(r.points||0),0));
+  const dayItems=Array.from({length:14},()=>new Set<string>());(allCompletions||[]).forEach((r:any)=>{const d=Number(r.day);if(d>=1&&d<=14&&!String(r.task_id).includes(':sub:')&&Number(r.points||0)>=0)dayItems[d-1].add(String(r.task_id));});setDayProgress(dayItems.map(s=>s.size));
   const {data:cm}=await client.from('crew_members').select('user_id').eq('crew_id',selected.id);
   const memberIds=(cm||[]).map((x:any)=>x.user_id);
   const {data:people}=await client.from('profiles').select('id,name,avatar_path').in('id',memberIds);
