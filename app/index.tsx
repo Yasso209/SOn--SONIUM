@@ -417,11 +417,12 @@ export default function App(){
      <View style={{flexDirection:'row',alignItems:'center',gap:8}}><Text style={{color:C.fg,fontWeight:'900',flex:1}}>{t.title}</Text><Text style={{color:C.accent,fontWeight:'900'}}>+{t.points} pts</Text></View>
      <Text style={{color:C.muted,fontSize:10,marginTop:4}}>{(t.shared_proofs||[]).length} member proofs submitted</Text>
      {(t.shared_proofs||[]).map((p:any)=>{
-      const reviews=p.reviews||[];const yes=reviews.filter((v:any)=>v.approved).length;const no=reviews.filter((v:any)=>!v.approved).length;const myVote=reviews.find((v:any)=>v.reviewer_id===userId);
+      const reviews=p.reviews||[];const yes=reviews.filter((v:any)=>v.approved).length;const no=reviews.filter((v:any)=>!v.approved).length;const required=Math.max(0,members.length-1);const approved=reviews.length===required&&yes===required;const myVote=reviews.find((v:any)=>v.reviewer_id===userId);
       return <View key={p.id} style={{marginTop:11,padding:10,borderRadius:14,backgroundColor:C.card2}}>
        <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><Text style={{color:C.fg,fontSize:11,fontWeight:'900'}}>{members.find(m=>m.user_id===p.user_id)?.name||'Crew member'}'s proof</Text><Text style={{color:C.muted,fontSize:9}}>{new Date(p.created_at||Date.now()).toLocaleDateString()}</Text></View>
        {p.signedUrl&&<Image source={{uri:p.signedUrl}} style={{width:'100%',height:190,borderRadius:10,marginTop:8}} resizeMode="cover"/>}
        <View style={{flexDirection:'row',justifyContent:'space-between',marginTop:8}}><Text style={{color:C.accent,fontSize:10,fontWeight:'800'}}>✓ {yes} approve</Text><Text style={{color:C.flame,fontSize:10,fontWeight:'800'}}>✕ {no} reject</Text></View>
+       <Text style={{color:approved?C.accent:no?C.flame:C.muted,fontSize:10,fontWeight:'900',marginTop:7}}>{approved?'APPROVED · +'+t.points+' crew points':no>0?'NOT APPROVED · redo required':(required-reviews.length)+' member reviews remaining'}</Text>
        {p.user_id!==userId?<View style={{flexDirection:'row',gap:8,marginTop:8}}>
         <TouchableOpacity disabled={proofReviewBusy===p.id} onPress={()=>voteProof(p.id,crew.id,true)} style={[styles.smallBtn,{backgroundColor:C.accent,flex:1,alignItems:'center'}]}><Text style={{color:C.accentInk,fontWeight:'900',fontSize:11}}>{myVote?.approved?'✓ Approved':'Looks correct'}</Text></TouchableOpacity>
         <TouchableOpacity disabled={proofReviewBusy===p.id} onPress={()=>voteProof(p.id,crew.id,false)} style={[styles.smallBtn,{backgroundColor:C.bg,flex:1,alignItems:'center'}]}><Text style={{color:C.fg,fontWeight:'900',fontSize:11}}>{myVote&&!myVote.approved?'✓ Needs redo':'Not correct'}</Text></TouchableOpacity>
