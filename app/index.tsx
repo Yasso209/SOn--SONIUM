@@ -102,11 +102,82 @@ export default function App(){
  const toast=(s:string)=>{setNotice(s);setTimeout(()=>setNotice(''),2500);};
  const saveLocal=async(patch:Record<string,unknown>)=>{const raw=await AsyncStorage.getItem(STORE);await AsyncStorage.setItem(STORE,JSON.stringify({...(raw ? JSON.parse(raw) : {}), ...patch}));};
 
- useEffect(()=>{let active=true;(async()=>{try{const raw=await AsyncStorage.getItem(STORE);if(raw&&active){const s=JSON.parse(raw);setName(s.name||'Player');setAvatar(s.avatar||null);setDone(s.done||[]);setPrayers(s.prayers||[]);setThemeMode(s.themeMode||'dark');setReminder(Boolean(s.reminder));}if(supabase){const {data:sess}=await supabase.auth.getSession();let uid=sess.session?.user.id;if(!uid){const {data,error}=await supabase.auth.signInAnonymously();if(error)throw error;uid=data.user?.id;}if(uid&&active){setUserId(uid);const {data:p}=await supabase.from('profiles').select('name').eq('id',uid).maybeSingle();if(p?.name)setName(p.name);}}}catch(e:any){toast(e?.message||'Could not start SONIUM');}finally{if(active)setLoading(false);}})();return()=>{active=false;};},[]);
- useEffect(()=>{saveLocal({name,avatar,done,subtaskDone,themeMode,reminder}).catch(()=>{});},[name,avatar,done,subtaskDone,themeMode,reminder]);
+ useEffect(()=>{let active=true;(async()=>{try{
+  const raw=await AsyncStorage.getItem(STORE);
+  if(raw&&active){const s=JSON.parse(raw);setName(s.name||'Player');setAvatar(s.avatar||null);setDone(s.done||[]);setSubtaskDone(s.subtaskDone||[]);setThemeMode(s.themeMode||'dark');}
+  if(supabase){
+   const {data:sess}=await supabase.auth.getSession();let uid=sess.session?.user.id;
+   if(!uid){const {data,error}=await supabase.auth.signInAnonymously();if(error)throw error;uid=data.user?.id;}
+   if(uid&&active){setUserId(uid);const {data:p}=await supabase.from('profiles').select('name,avatar_path').eq('id',uid).maybeSingle();if(p?.name)setName(p.name);if(p?.avatar_path){setAvatarPath(p.avatar_path);const {data:a}=await supabase.storage.from('avatars').createSignedUrl(p.avatar_path,3600);if(a?.signedUrl)setAvatar(a.signedUrl);}}
+  }
+ }catch(e:any){toast(e?.message||'Could not start SONIUM');}finally{if(active)setLoading(false);}})();return()=>{active=false;};},[]);
+ useEffect(()=>{saveLocal({name,avatar,done,subtaskDone,themeMode}).catch(()=>{});},[name,avatar,done,subtaskDone,themeMode]);
  useEffect(()=>{Animated.spring(progressAnim,{toValue:progressPeek?1:0,useNativeDriver:false,friction:8,tension:75}).start();},[progressPeek,progressAnim]);
- const refreshStats=async(cId:string,uid:string)=>{if(!supabase)return;const since=new Date();since.setDate(since.getDate()-6);since.setHours(0,0,0,0);const {data}=await supabase.from('completions').select('points,done_at').eq('crew_id',cId).eq('user_id',uid).gte('done_at',since.toISOString());const labels:string[]=[];const values=Array(7).fill(0);for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);labels.push(d.toLocaleDateString('en-US',{weekday:'short'}));}const days=new Set<string>();(data||[]).forEach((r:any)=>{const d=new Date(r.done_at);d.setHours(0,0,0,0);days.add(d.toDateString());const i=Math.floor((d.getTime()-since.getTime())/86400000);if(i>=0&&i<7)values[i]+=Number(r.points||0);});setWeeklyPoints(values);setWeekLabels(labels);let cursor=new Date();cursor.setHours(0,0,0,0);if(!days.has(cursor.toDateString()))cursor.setDate(cursor.getDate()-1);let n=0;while(days.has(cursor.toDateString())&&n<30){n++;cursor.setDate(cursor.getDate()-1);}setStreak(n);};
- const loadCrew=async()=>{const client=supabase;if(!client||!userId)return;const {data:adminResult}=await client.rpc('is_admin');const admin=adminResult===true;setIsAdmin(admin);if(admin){const {data:rs}=await client.from('reports').select('*').order('created_at',{ascending:false}).limit(50);const {data:ps}=await client.from('profiles').select('id,name,banned').order('created_at',{ascending:false}).limit(100);const {data:cs}=await client.from('crews').select('id,name').order('created_at',{ascending:false}).limit(100);const {data:cms}=await client.from('crew_members').select('crew_id,user_id');const {data:msgs}=await client.from('messages').select('id,crew_id,user_id,body,sticker').order('created_at',{ascending:false}).limit(60);if(rs)setAdminReports(rs);if(ps)setAdminProfiles(ps);if(cs)setAdminCrews(cs.map((x:any)=>({...x,members:(cms||[]).filter((m:any)=>m.crew_id===x.id)})));if(msgs)setAdminMessages(msgs);}const {data:ms}=await client.from('crew_members').select('crew_id').eq('user_id',userId);const ids=(ms||[]).map((x:any)=>x.crew_id);if(!ids.length){setCrews([]);setCrew(null);setMembers([]);setBoard([]);setMessages([]);setSharedTasks([]);return;}const {data:cs}=await client.from('crews').select('id,name,invite_code,start_date,days,penalty,penalty_custom').in('id',ids);const list=(cs||[]) as Crew[];setCrews(list);const selected=list.find(c=>c.id===activeCrewId)||list[0];if(!selected)return;setCrew(selected);setActiveCrewId(selected.id);const start=new Date(selected.start_date+'T00:00:00');const today=new Date();today.setHours(0,0,0,0);const elapsed=Math.floor((today.getTime()-start.getTime())/86400000)+1;const activeDay=Math.max(1,Math.min(selected.days||14,elapsed));setCurrentDay(activeDay);setDay(activeDay);setChallengeActive(elapsed>=1&&elapsed<=(selected.days||14));const {data:checks}=await client.from('completions').select('task_id').eq('crew_id',selected.id).eq('user_id',userId).eq('day',activeDay);if(checks){setDone(checks.filter((x:any)=>!String(x.task_id).startsWith('prayers_')).map((x:any)=>x.task_id));setPrayers(checks.filter((x:any)=>String(x.task_id).startsWith('prayers_')).map((x:any)=>({prayers_fajr:'Fajr',prayers_dhuhr:'Dhuhr',prayers_asr:'Asr',prayers_maghrib:'Maghrib',prayers_isha:'Isha'} as any)[x.task_id]).filter(Boolean));}const {data:cm}=await client.from('crew_members').select('user_id').eq('crew_id',selected.id);const memberIds=(cm||[]).map((x:any)=>x.user_id);const {data:people}=await client.from('profiles').select('id,name').in('id',memberIds);if(people)setMembers(people.map((p:any)=>({user_id:p.id,name:p.name||'Player'})));const {data:lb}=await client.from('crew_leaderboard').select('user_id,name,points').eq('crew_id',selected.id).order('points',{ascending:false});if(lb)setBoard(lb);const {data:msgs}=await client.from('messages').select('id,user_id,body,sticker,created_at').eq('crew_id',selected.id).order('created_at',{ascending:false}).limit(50);if(msgs)setMessages(msgs.reverse());const {data:shared}=await client.from('shared_tasks').select('id,title,points,created_by,created_at,shared_proofs(user_id,photo_path)').eq('crew_id',selected.id).order('created_at',{ascending:false});if(shared){const enriched=await Promise.all(shared.map(async(t:any)=>({...t,shared_proofs:await Promise.all((t.shared_proofs||[]).map(async(p:any)=>{const {data}=await client.storage.from('proofs').createSignedUrl(p.photo_path,3600);return {...p,signedUrl:data?.signedUrl||null};}))})));setSharedTasks(enriched);}await refreshStats(selected.id,userId);};
+ const refreshStats=async(cId:string,uid:string)=>{
+  if(!supabase)return;
+  const since=new Date();since.setDate(since.getDate()-6);since.setHours(0,0,0,0);
+  const {data}=await supabase.from('completions').select('points,done_at').eq('crew_id',cId).eq('user_id',uid).gte('done_at',since.toISOString());
+  const {data:all}=await supabase.from('completions').select('points').eq('crew_id',cId).eq('user_id',uid);
+  setTotalEarned((all||[]).reduce((sum:any,r:any)=>sum+Number(r.points||0),0));
+  const labels:string[]=[];const values=Array(7).fill(0);
+  for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);labels.push(d.toLocaleDateString('en-US',{weekday:'short'}));}
+  const days=new Set<string>();
+  (data||[]).forEach((r:any)=>{const d=new Date(r.done_at);d.setHours(0,0,0,0);days.add(d.toDateString());const i=Math.floor((d.getTime()-since.getTime())/86400000);if(i>=0&&i<7)values[i]+=Number(r.points||0);});
+  setWeeklyPoints(values);setWeekLabels(labels);
+  let cursor=new Date();cursor.setHours(0,0,0,0);if(!days.has(cursor.toDateString()))cursor.setDate(cursor.getDate()-1);
+  let n=0;while(days.has(cursor.toDateString())&&n<30){n++;cursor.setDate(cursor.getDate()-1);}setStreak(n);
+ };
+ const loadDayRecords=async(dayNumber:number)=>{
+  if(!supabase||!userId||!crew)return;
+  const {data:checks,error}=await supabase.from('completions').select('task_id').eq('crew_id',crew.id).eq('user_id',userId).eq('day',dayNumber);
+  if(error){toast(error.message);return;}
+  const ids=(checks||[]).map((x:any)=>String(x.task_id));
+  setDone(ids.filter((id:string)=>!id.includes(':sub:')&&!id.startsWith('prayers_')));
+  setSubtaskDone(ids.filter((id:string)=>id.includes(':sub:')));
+  setDay(dayNumber);
+ };
+ const loadCrew=async()=>{
+  const client=supabase;if(!client||!userId)return;
+  const {data:adminResult}=await client.rpc('is_admin');const admin=adminResult===true;setIsAdmin(admin);
+  if(admin){
+   const {data:rs}=await client.from('reports').select('*').order('created_at',{ascending:false}).limit(50);
+   const {data:ps}=await client.from('profiles').select('id,name,banned').order('created_at',{ascending:false}).limit(100);
+   const {data:cs}=await client.from('crews').select('id,name').order('created_at',{ascending:false}).limit(100);
+   const {data:cms}=await client.from('crew_members').select('crew_id,user_id');
+   const {data:msgs}=await client.from('messages').select('id,crew_id,user_id,body,sticker').order('created_at',{ascending:false}).limit(60);
+   if(rs)setAdminReports(rs);if(ps)setAdminProfiles(ps);if(cs)setAdminCrews(cs.map((x:any)=>({...x,members:(cms||[]).filter((m:any)=>m.crew_id===x.id)})));if(msgs)setAdminMessages(msgs);
+  }
+  const {data:ms}=await client.from('crew_members').select('crew_id').eq('user_id',userId);
+  const ids=(ms||[]).map((x:any)=>x.crew_id);
+  if(!ids.length){setCrews([]);setCrew(null);setMembers([]);setBoard([]);setMessages([]);setSharedTasks([]);setTasks([]);setDone([]);setSubtaskDone([]);setTotalEarned(0);return;}
+  const {data:cs}=await client.from('crews').select('id,name,invite_code,start_date,days,penalty,penalty_custom').in('id',ids);
+  const list=(cs||[]) as Crew[];setCrews(list);
+  const selected=list.find(c=>c.id===activeCrewId)||list[0];if(!selected)return;
+  setCrew(selected);setActiveCrewId(selected.id);
+  const startDate=new Date(selected.start_date+'T00:00:00');const today=new Date();today.setHours(0,0,0,0);
+  const elapsed=Math.floor((today.getTime()-startDate.getTime())/86400000)+1;
+  const activeDay=Math.max(1,Math.min(selected.days||14,elapsed));
+  setCurrentDay(activeDay);setDay(activeDay);setChallengeActive(elapsed>=1&&elapsed<=(selected.days||14));
+  const [{data:taskRows},{data:checks},{data:allCompletions}]=await Promise.all([
+   client.from('personal_tasks').select('id,user_id,crew_id,title,details,points,icon,subtasks,reminder_enabled,reminder_time,sort_order').eq('crew_id',selected.id).eq('user_id',userId).order('sort_order').order('created_at'),
+   client.from('completions').select('task_id').eq('crew_id',selected.id).eq('user_id',userId).eq('day',activeDay),
+   client.from('completions').select('points').eq('crew_id',selected.id).eq('user_id',userId)
+  ]);
+  setTasks((taskRows||[]).map((t:any)=>({...t,subtasks:Array.isArray(t.subtasks)?t.subtasks:[]})) as PersonalTask[]);
+  const completionIds=(checks||[]).map((x:any)=>String(x.task_id));
+  setDone(completionIds.filter((id:string)=>!id.includes(':sub:')&&!id.startsWith('prayers_')));
+  setSubtaskDone(completionIds.filter((id:string)=>id.includes(':sub:')));
+  setTotalEarned((allCompletions||[]).reduce((sum:any,r:any)=>sum+Number(r.points||0),0));
+  const {data:cm}=await client.from('crew_members').select('user_id').eq('crew_id',selected.id);
+  const memberIds=(cm||[]).map((x:any)=>x.user_id);
+  const {data:people}=await client.from('profiles').select('id,name,avatar_path').in('id',memberIds);
+  if(people){const withAvatars=await Promise.all(people.map(async(p:any)=>{let url=null;if(p.avatar_path){const {data}=await client.storage.from('avatars').createSignedUrl(p.avatar_path,3600);url=data?.signedUrl||null;}return {user_id:p.id,name:p.name||'Player',avatar_url:url};}));setMembers(withAvatars);}
+  const {data:lb}=await client.from('crew_leaderboard').select('user_id,name,points').eq('crew_id',selected.id).order('points',{ascending:false});if(lb)setBoard(lb);
+  const {data:msgs}=await client.from('messages').select('id,user_id,body,sticker,created_at').eq('crew_id',selected.id).order('created_at',{ascending:false}).limit(50);if(msgs)setMessages(msgs.reverse());
+  const {data:shared}=await client.from('shared_tasks').select('id,title,points,created_by,created_at,shared_proofs(id,user_id,photo_path,shared_proof_reviews(id,reviewer_id,approved,note))').eq('crew_id',selected.id).order('created_at',{ascending:false});
+  if(shared){const enriched=await Promise.all(shared.map(async(t:any)=>({...t,shared_proofs:await Promise.all((t.shared_proofs||[]).map(async(p:any)=>{const {data}=await client.storage.from('proofs').createSignedUrl(p.photo_path,3600);return {...p,signedUrl:data?.signedUrl||null,reviews:p.shared_proof_reviews||[]};}))})));setSharedTasks(enriched);}
+  await refreshStats(selected.id,userId);
+ };
  useEffect(()=>{loadCrew();},[userId,activeCrewId]);
  useEffect(()=>{if(!supabase||!crew)return;const ch=supabase.channel('crew-'+crew.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'crew_id=eq.'+crew.id},p=>setMessages(old=>old.some(m=>m.id===(p.new as Msg).id)?old:[...old,p.new as Msg])).subscribe();return()=>{supabase?.removeChannel(ch);};},[crew?.id]);
  const toggleTask=async(id:string)=>{if(day!==currentDay||!challengeActive){toast('Past and future days are read-only');return;}if(id==='prayers'){setShowPrayers(true);return;}const was=done.includes(id);setDone(old=>was?old.filter(x=>x!==id):[...old,id]);if(supabase&&userId&&crew){if(was)await supabase.from('completions').delete().match({user_id:userId,crew_id:crew.id,day:currentDay,task_id:id});else{const {error}=await supabase.from('completions').insert({user_id:userId,crew_id:crew.id,day:currentDay,task_id:id});if(error)toast(error.message);}await refreshStats(crew.id,userId);}if(!was)toast('+'+TASKS.find(t=>t.id===id)?.points+' points');};
