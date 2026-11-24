@@ -831,7 +831,7 @@ export default function App(){
    <Pressable style={[StyleSheet.absoluteFillObject,{zIndex:0}]} onPress={()=>{Keyboard.dismiss();setModal(null);}} />
    <KeyboardAvoidingView pointerEvents="box-none" enabled={Platform.OS==='ios'} behavior={Platform.OS==='ios'?'padding':undefined} style={{flex:1,justifyContent:'flex-end',zIndex:1}}>
     <View style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'88%'}]}>
-    <View style={styles.sheetHead}><View style={{flex:1}}><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>{modal==='task'?(activeTask?'Edit personal task':'New personal task'):modal==='create'?'Create a crew':modal==='join'?'Join a crew'modal==='report'?'Report a member':modal==='rename'?'Rename crew':'Privacy & moderation'}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>SONIUM · Make today count</Text></View><TouchableOpacity onPress={()=>setModal(null)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
+    <View style={styles.sheetHead}><View style={{flex:1}}><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>{modal==='task'?(activeTask?'Edit personal task':'New personal task'):modal==='create'?'Create a crew':modal==='join'?'Join a crew':modal==='report'?'Report a member':modal==='rename'?'Rename crew':'Privacy & moderation'}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>SONIUM · Make today count</Text></View><TouchableOpacity onPress={()=>setModal(null)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
     <ScrollView keyboardShouldPersistTaps="always" keyboardDismissMode="on-drag" nestedScrollEnabled style={{flexShrink:1,maxHeight:'72%'}} >
      {modal==='task'?<>
       <Text style={{color:C.muted,fontSize:11,marginBottom:6}}>TASK NAME</Text>
