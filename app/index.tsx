@@ -273,8 +273,28 @@ export default function App(){
  const createCrew=async()=>{if(!crewName.trim()||!supabase)return;const {data,error}=await supabase.rpc('create_crew',{p_name:crewName.trim()});if(error)toast(error.message);else{setCrewName('');setModal(null);setActiveCrewId(data);toast('Crew created');}};
  const joinCrew=async()=>{if(!inviteCode.trim()||!supabase)return;const {data,error}=await supabase.rpc('join_crew',{p_code:inviteCode.trim()});if(error)toast(error.message);else{setInviteCode('');setModal(null);setActiveCrewId(data);toast('Joined crew');}};
  const sendMessage=async(body:string,sticker:string|null=null)=>{if(!supabase||!userId||!crew||(!body.trim()&&!sticker))return;const {data,error}=await supabase.from('messages').insert({crew_id:crew.id,user_id:userId,body:body.trim()||null,sticker}).select('id,user_id,body,sticker,created_at').single();if(error)toast(error.message);else if(data)setMessages(old=>old.some(m=>m.id===data.id)?old:[...old,data as Msg]);setMessage('');};
- const pickAvatar=async()=>{const p=await ImagePicker.requestMediaLibraryPermissionsAsync();if(!p.granted)return toast('Photo permission is needed');const r=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:true,aspect:[1,1],quality:.75});if(!r.canceled)setAvatar(r.assets[0].uri);};
- const saveProfile=async()=>{if(!name.trim())return;const value=name.trim().slice(0,24);setName(value);setProfileEdit(false);if(supabase&&userId){const {error}=await supabase.from('profiles').update({name:value}).eq('id',userId);if(error)toast(error.message);}toast('Profile saved');};
+ const pickAvatar=async()=>{const p=await ImagePicker.requestMediaLibraryPermissionsAsync();if(!p.granted)return toast('Photo permission is needed');const r=await ImagePicker.launchImageLibraryAsync({mediaTypes:['images'],allowsEditing:true,aspect:[1,1],quality:.8});if(!r.canceled)setAvatar(r.assets[0].uri);};
+ const saveProfile=async()=>{
+  if(!name.trim())return toast('Enter your name');
+  const value=name.trim().slice(0,24);setName(value);
+  if(supabase&&userId){
+   try{
+    let savedPath=avatarPath;
+    if(avatar&&/^(file:|content:)/.test(avatar)){
+     const ext=avatar.toLowerCase().includes('.png')?'png':avatar.toLowerCase().includes('.webp')?'webp':'jpg';
+     const path=userId+'/profile-'+Date.now()+'.'+ext;
+     const blob=await(await fetch(avatar)).blob();
+     const {error:uploadError}=await supabase.storage.from('avatars').upload(path,blob,{contentType:ext==='png'?'image/png':ext==='webp'?'image/webp':'image/jpeg',upsert:false});
+     if(uploadError)throw uploadError;savedPath=path;
+    }
+    const {error}=await supabase.from('profiles').update({name:value,avatar_path:savedPath}).eq('id',userId);
+    if(error)throw error;
+    if(savedPath){setAvatarPath(savedPath);const {data}=await supabase.storage.from('avatars').createSignedUrl(savedPath,3600);if(data?.signedUrl)setAvatar(data.signedUrl);}
+    toast('Profile saved and synced');
+   }catch(e:any){toast(e?.message||'Could not sync your profile');return;}
+  }else toast('Profile saved on this device');
+  setProfileEdit(false);
+ };
  const toggleReminder=async(value:boolean)=>{setReminder(value);if(value){const p=await Notifications.requestPermissionsAsync();if(!p.granted){setReminder(false);return toast('Notification permission not granted');}if(Platform.OS==='android')await Notifications.setNotificationChannelAsync('sonium-reminders',{name:'Daily reminders',importance:Notifications.AndroidImportance.DEFAULT});await Notifications.cancelAllScheduledNotificationsAsync();await Notifications.scheduleNotificationAsync({content:{title:'SONIUM · Daily check-in',body:'Your daily challenge is waiting. Make today count.'},trigger:{type:Notifications.SchedulableTriggerInputTypes.DAILY,hour:20,minute:0,channelId:'sonium-reminders'}});toast('Daily reminder set for 8:00 PM');}else{await Notifications.cancelAllScheduledNotificationsAsync();toast('Reminder off');}};
  const leaveCrew=()=>Alert.alert('Leave crew?','You can join again with an invite code.',[{text:'Cancel',style:'cancel'},{text:'Leave',style:'destructive',onPress:async()=>{if(supabase&&userId&&crew){const {error}=await supabase.from('crew_members').delete().match({crew_id:crew.id,user_id:userId});if(error)toast(error.message);else{setActiveCrewId(null);setCrew(null);await loadCrew();}}}}]);
  const saveCrew=async(patch:Record<string,any>)=>{if(!supabase||!crew)return;const {error}=await supabase.from('crews').update(patch).eq('id',crew.id);if(error)toast(error.message);else{setCrew({...crew,...patch});setCrews(old=>old.map(c=>c.id===crew.id?{...c,...patch}:c));toast('Crew settings saved');}};
