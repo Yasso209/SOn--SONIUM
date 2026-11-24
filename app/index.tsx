@@ -75,6 +75,7 @@ export default function App(){
  const [reportReason,setReportReason]=useState('abuse');
  const [email,setEmail]=useState('');
  const [password,setPassword]=useState('');
+ const [accountEmail,setAccountEmail]=useState('');
  const [profileEdit,setProfileEdit]=useState(false);
  const [reminder,setReminder]=useState(false);
  const [loading,setLoading]=useState(true);
@@ -107,7 +108,7 @@ export default function App(){
   const raw=await AsyncStorage.getItem(STORE);
   if(raw&&active){const s=JSON.parse(raw);setName(s.name||'Player');setAvatar(s.avatar||null);setDone(s.done||[]);setSubtaskDone(s.subtaskDone||[]);setThemeMode(s.themeMode||'dark');}
   if(supabase){
-   const {data:sess}=await supabase.auth.getSession();let uid=sess.session?.user.id;
+   const {data:sess}=await supabase.auth.getSession();let uid=sess.session?.user.id;setAccountEmail(sess.session?.user.email||'');
    if(!uid){const {data,error}=await supabase.auth.signInAnonymously();if(error)throw error;uid=data.user?.id;}
    if(uid&&active){setUserId(uid);const {data:p}=await supabase.from('profiles').select('name,avatar_path').eq('id',uid).maybeSingle();if(p?.name)setName(p.name);if(p?.avatar_path){setAvatarPath(p.avatar_path);const {data:a}=await supabase.storage.from('avatars').createSignedUrl(p.avatar_path,3600);if(a?.signedUrl)setAvatar(a.signedUrl);}}
   }
@@ -297,6 +298,14 @@ export default function App(){
   }else toast('Profile saved on this device');
   setProfileEdit(false);
  };
+ const toggleTaskReminder=async(task:PersonalTask,value:boolean)=>{
+  if(!supabase||!userId)return;
+  const updated={...task,reminder_enabled:value,reminder_time:value?(task.reminder_time||'20:00'):task.reminder_time};
+  const {error}=await supabase.from('personal_tasks').update({reminder_enabled:updated.reminder_enabled,reminder_time:updated.reminder_enabled?updated.reminder_time+((updated.reminder_time||'').length===5?':00':''):null}).eq('id',task.id).eq('user_id',userId);
+  if(error){toast(error.message);return;}
+  setTasks(old=>old.map(t=>t.id===task.id?updated:t));await syncTaskReminder(updated);
+  toast(value?'Reminder enabled for '+task.title:'Reminder turned off');
+ };
  const toggleReminder=async(value:boolean)=>{setReminder(value);if(value){const p=await Notifications.requestPermissionsAsync();if(!p.granted){setReminder(false);return toast('Notification permission not granted');}if(Platform.OS==='android')await Notifications.setNotificationChannelAsync('sonium-reminders',{name:'Daily reminders',importance:Notifications.AndroidImportance.DEFAULT});await Notifications.cancelAllScheduledNotificationsAsync();await Notifications.scheduleNotificationAsync({content:{title:'SONIUM · Daily check-in',body:'Your daily challenge is waiting. Make today count.'},trigger:{type:Notifications.SchedulableTriggerInputTypes.DAILY,hour:20,minute:0,channelId:'sonium-reminders'}});toast('Daily reminder set for 8:00 PM');}else{await Notifications.cancelAllScheduledNotificationsAsync();toast('Reminder off');}};
  const leaveCrew=()=>Alert.alert('Leave crew?','You can join again with an invite code.',[{text:'Cancel',style:'cancel'},{text:'Leave',style:'destructive',onPress:async()=>{if(supabase&&userId&&crew){const {error}=await supabase.from('crew_members').delete().match({crew_id:crew.id,user_id:userId});if(error)toast(error.message);else{setActiveCrewId(null);setCrew(null);await loadCrew();}}}}]);
  const saveCrew=async(patch:Record<string,any>)=>{if(!supabase||!crew)return;const {error}=await supabase.from('crews').update(patch).eq('id',crew.id);if(error)toast(error.message);else{setCrew({...crew,...patch});setCrews(old=>old.map(c=>c.id===crew.id?{...c,...patch}:c));toast('Crew settings saved');}};
@@ -308,8 +317,8 @@ export default function App(){
  const submitReport=async()=>{if(!supabase||!userId||!crew||!reportUser)return;const {data,error}=await supabase.from('reports').insert({reporter_id:userId,reported_id:reportUser,crew_id:crew.id,reason:reportReason,note:reportNote.trim()||null}).select('id').single();if(error){toast(error.message);return;}const result=await supabase.functions.invoke('notify-report',{body:{report_id:data.id}});toast(result.error?'Report saved; email alert is not configured yet':'Report sent for review');setModal(null);setReportUser('');setReportNote('');};
  const createSharedTask=async()=>{if(!newSharedTask.trim()||!supabase||!userId||!crew)return;const {error}=await supabase.from('shared_tasks').insert({crew_id:crew.id,title:newSharedTask.trim().slice(0,40),points:20,created_by:userId});if(error)toast(error.message);else{setNewSharedTask('');await loadCrew();toast('Crew task added');}};
  const submitProof=async(taskId:string)=>{if(!supabase||!userId||!crew)return;const p=await ImagePicker.requestCameraPermissionsAsync();if(!p.granted)return toast('Camera permission is needed');const picked=await ImagePicker.launchCameraAsync({mediaTypes:['images'],allowsEditing:true,quality:.8});if(picked.canceled)return;try{const asset=picked.assets[0];const ext=asset.mimeType?.includes('png')?'png':'jpg';const path=crew.id+'/'+userId+'/'+Date.now()+'.'+ext;const blob=await(await fetch(asset.uri)).blob();const {error:uploadError}=await supabase.storage.from('proofs').upload(path,blob,{contentType:asset.mimeType||'image/jpeg',upsert:false});if(uploadError)throw uploadError;const {error}=await supabase.from('shared_proofs').insert({shared_task_id:taskId,crew_id:crew.id,user_id:userId,photo_path:path});if(error)throw error;await loadCrew();toast('Proof submitted · +20 points');}catch(e:any){toast(e?.message||'Could not upload proof');}};
- const saveAccount=async()=>{if(!supabase||!email.includes('@')||password.length<8)return toast('Enter a valid email and password (8+ characters)');const {error}=await supabase.auth.updateUser({email:email.trim(),password});if(error)toast(error.message);else{setPassword('');toast('Check your email to confirm the account');}};
- const signIn=async()=>{if(!supabase||!email.includes('@')||!password)return;const {data,error}=await supabase.auth.signInWithPassword({email:email.trim(),password});if(error)toast(error.message);else{setUserId(data.user.id);setModal(null);setPassword('');toast('Account restored');}};
+ const saveAccount=async()=>{if(!supabase||!email.includes('@')||password.length<8)return toast('Enter a valid email and password (8+ characters)');const {data,error}=await supabase.auth.updateUser({email:email.trim(),password});if(error)toast(error.message);else{setAccountEmail(data.user?.email||email.trim());setPassword('');toast('Account link requested · confirm the email in your inbox');}};
+ const signIn=async()=>{if(!supabase||!email.includes('@')||!password)return;const {data,error}=await supabase.auth.signInWithPassword({email:email.trim(),password});if(error)toast(error.message);else{setUserId(data.user.id);setAccountEmail(data.user.email||email.trim());const {data:p}=await supabase.from('profiles').select('name,avatar_path').eq('id',data.user.id).maybeSingle();if(p?.name)setName(p.name);if(p?.avatar_path){setAvatarPath(p.avatar_path);const {data:a}=await supabase.storage.from('avatars').createSignedUrl(p.avatar_path,3600);if(a?.signedUrl)setAvatar(a.signedUrl);}setModal(null);setPassword('');toast('Account restored and synced');}};
  const Card=({children,style}:any)=><View style={[styles.card,{backgroundColor:C.card,borderColor:C.line},style]}>{children}</View>;
  const Section=({title,right,onRight}:any)=><View style={styles.section}><Text style={[styles.sectionTitle,{color:C.fg}]}>{title}</Text>{right&&<TouchableOpacity onPress={onRight}><Text style={{color:C.accent,fontWeight:'800'}}>{right}</Text></TouchableOpacity>}</View>;
  const TaskRow=({task}: {task:PersonalTask})=>{
