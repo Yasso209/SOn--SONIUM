@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Image, Keyboard, KeyboardAvoidingView, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Platform, Switch, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Image, Keyboard, KeyboardAvoidingView, Modal, Pressable, RefreshControl, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Platform, Switch, Text as NativeText, TextInput as NativeTextInput, type TextProps, type TextInputProps, TouchableOpacity, View, useColorScheme } from 'react-native';
 import { useFonts } from 'expo-font';
 import * as FileSystem from 'expo-file-system';
 import { decode } from 'base64-arraybuffer';
@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Linking from 'expo-linking';
+import * as Sharing from 'expo-sharing';
 import * as Notifications from 'expo-notifications';
 import mascot from '../assets/mascot.webp';
 import { colors, ThemeMode } from '../src/theme/tokens';
@@ -21,6 +22,55 @@ const TASK_SUGGESTIONS = [
   {title:'Study for 1 hour',points:10,icon:'school-outline',subtasks:['First 25 minutes','Short break','Second 25 minutes']},
 ];
 const STICKERS=['🔥','💪','🏆','⚡','🎯','👏','🚀','💚'];
+const WEEKLY_VERDICT_PROMPTS=[
+ 'Finish one small task you have been putting off',
+ 'Organize your study notes',
+ 'Plan next week together',
+ 'Read something new for 20 minutes',
+ 'Tidy your study space',
+ 'Learn five new words',
+ 'Share one useful thing you learned',
+ 'Prepare a simple plan for tomorrow'
+];
+function getWeeklyVerdictTitle(){
+ const now=new Date();
+ const d=new Date(Date.UTC(now.getFullYear(),now.getMonth(),now.getDate()));
+ const day=d.getUTCDay()||7;
+ d.setUTCDate(d.getUTCDate()+4-day);
+ const year=d.getUTCFullYear();
+ const yearStart=new Date(Date.UTC(year,0,1));
+ const week=Math.ceil((((d.getTime()-yearStart.getTime())/86400000)+1)/7);
+ const prompt=WEEKLY_VERDICT_PROMPTS[(year*53+week)%WEEKLY_VERDICT_PROMPTS.length];
+ return 'Weekly Verdict · '+prompt+' · '+year+'-W'+String(week).padStart(2,'0');
+}
+const AR:Record<string,string>={
+ 'Home':'الرئيسية','Stats':'الإحصائيات','Crew':'الفريق','Settings':'الإعدادات',
+ 'YOUR PEOPLE':'أصحابك','YOUR ACCOUNT':'حسابك','Make it yours':'خصص تجربتك','Your':'مساحتك','Crew.':'فريقك.',
+ 'Build good habits with your people.':'ابنوا عادات أفضل مع بعض.','ACTIVE CREW':'الفريق الحالي','Invite friends +':'ادعُ أصحابك +','Invite':'دعوة','Report':'إبلاغ','You':'أنت',
+ 'YOUR RANK':'ترتيبك','in this crew':'في الفريق','Crew challenge progress':'تقدم تحدي الفريق','days left in the challenge':'يوم متبقي في التحدي','Crew leaderboard':'ترتيب الفريق',
+ 'Shared crew tasks':'مهام الفريق المشتركة','These tasks are shared by the whole crew. Each member submits a photo, then other members review whether the proof is valid.':'دي مهام مشتركة للفريق. كل عضو يرفع صورة، وباقي الأعضاء يراجعوا المهمة ويوافقوا عليها.',
+ 'Create a shared task...':'اكتب مهمة مشتركة...','+ Add shared task · 20 pts':'+ إضافة مهمة مشتركة · 20 نقطة','member proofs submitted':'إثباتات من الأعضاء','Add photo proof →':'أضف صورة إثبات ←',
+ 'Uploading photo…':'جارٍ رفع الصورة…','No shared tasks yet. Add the first crew challenge above.':'لسه مفيش مهام مشتركة. أضف أول تحدي للفريق من فوق.',
+ 'Weekly verdict':'مهمة الأسبوع','This week’s shared crew challenge':'تحدي الفريق لهذا الأسبوع',
+ 'This week\'s challenge is automatically added to Shared crew tasks above. Everyone submits a photo, and every other crew member must approve it before the crew points count.':'تحدي الأسبوع بيتضاف تلقائيًا للمهام المشتركة فوق. كل عضو يرفع صورة، وباقي أعضاء الفريق لازم يوافقوا عليها قبل احتساب النقاط.',
+ 'Crew activity':'نشاط الفريق','Show':'عرض','Hide':'إخفاء','Your crew activity will show here.':'نشاط الفريق هيظهر هنا.','Leave this crew':'مغادرة الفريق',
+ 'No crew yet':'لسه مفيش فريق','Create a crew':'إنشاء فريق','Join with invite code':'الانضمام بكود دعوة','Rename crew':'تعديل اسم الفريق',
+ 'Account & recovery':'الحساب واستعادة البيانات','Anonymous account':'حساب مجهول','Link email & password':'اربط إيميل وكلمة مرور',
+ 'Preferences':'التفضيلات','Appearance':'المظهر','Task reminder behavior':'تذكيرات المهام',
+ 'Each task has its own reminder switch and time. Edit a task to choose a separate time for it.':'كل مهمة ليها تذكير وميعاد خاص. افتح تعديل المهمة عشان تختار الميعاد.',
+ 'Language':'اللغة','English':'الإنجليزية','Arabic':'العربية','Dark':'داكن','Light':'فاتح','System':'حسب الجهاز',
+ 'Your crews':'فرقك','About':'عن التطبيق','SONIUM':'سونيوم','Created by Yassin Mohamed':'تطوير: Yassin Mohamed',
+ 'Privacy & moderation':'الخصوصية والإشراف','Share SONIUM':'مشاركة SONIUM','Help & Support · WhatsApp':'المساعدة والدعم · واتساب',
+ 'Your personal tasks':'مهامك الشخصية','Add task +':'إضافة مهمة +','No personal tasks yet. Create your first one from Home.':'مفيش مهام شخصية لسه. أنشئ أول مهمة من الرئيسية.',
+ 'TASK NAME':'اسم المهمة','DESCRIPTION (OPTIONAL)':'الوصف (اختياري)','POINTS · 0–100':'النقاط · 0–100','REMINDER TIME':'ميعاد التذكير','CHOOSE AN ICON':'اختر أيقونة',
+ 'INNER STEPS · ONE PER LINE':'الخطوات · كل خطوة في سطر','Reminder for this task':'تذكير للمهمة دي','Create my task':'إنشاء المهمة','Save task changes':'حفظ التعديلات','Delete this task':'حذف المهمة',
+ 'Join a crew':'الانضمام لفريق','Save':'حفظ','Cancel':'إلغاء','Preparing your challenge...':'جارٍ تجهيز التحدي...','Hold to preview all days':'اضغط مطولًا لمعاينة الأيام',
+ 'Keep Going · View your stats →':'كمل · شوف إحصائياتك ←','Your performance':'أداؤك','This week':'هذا الأسبوع','Crew chat':'دردشة الفريق','Write a message...':'اكتب رسالة...','Close':'إغلاق',
+ 'I understand':'فهمت','Create crew':'إنشاء الفريق','Join crew':'الانضمام للفريق','Crew name':'اسم الفريق','Invite code':'كود الدعوة',
+ 'Edit profile · Change photo':'تعديل الملف · تغيير الصورة','Choose photo':'اختيار صورة','Save profile':'حفظ الملف','No active crew':'لا يوجد فريق نشط',
+ 'Join another crew →':'انضم لفريق آخر ←','Create a new crew +':'إنشاء فريق جديد +','Start the crew conversation.':'ابدأ محادثة مع فريقك.',
+ 'Privacy & moderation':'الخصوصية والإشراف'
+};
 const STORE='sonium-v1-state';
 type Tab='Home'|'Stats'|'Crew'|'Settings';
 type Crew={id:string;name:string;invite_code:string;start_date:string;days:number;penalty?:string;penalty_custom?:string|null};
@@ -33,6 +83,10 @@ Notifications.setNotificationHandler({handleNotification:async()=>({shouldShowAl
 export default function App(){
  const [tab,setTab]=useState<Tab>('Home');
  const [themeMode,setThemeMode]=useState<ThemeMode>('dark');
+ const [language,setLanguage]=useState<'en'|'ar'>('en');
+ const [crewActivityExpanded,setCrewActivityExpanded]=useState(false);
+ const [chatOpen,setChatOpen]=useState(false);
+ const [shareBusy,setShareBusy]=useState(false);
  const [name,setName]=useState('Player');
  const [avatar,setAvatar]=useState<string|null>(null);
  const [done,setDone]=useState<string[]>([]);
@@ -75,7 +129,7 @@ export default function App(){
  const [penaltyCustom,setPenaltyCustom]=useState('');
  const [showDays,setShowDays]=useState(false);
  const [showPrayers,setShowPrayers]=useState(false);
- const [modal,setModal]=useState<'create'|'join'|'privacy'|'account'|'report'|'task'|null>(null);
+ const [modal,setModal]=useState<'create'|'join'|'privacy'|'account'|'report'|'task'|'rename'|null>(null);
  const [reportUser,setReportUser]=useState('');
  const [reportNote,setReportNote]=useState('');
  const [reportReason,setReportReason]=useState('abuse');
@@ -99,6 +153,9 @@ export default function App(){
  const systemScheme=useColorScheme();
  const isLight=themeMode==='light'||(themeMode==='system'&&systemScheme==='light');
  const C=isLight?colors.light:colors.dark;
+ const translate=(value:string)=>language==='ar'?(AR[value]||value):value;
+ const Text=(props:TextProps)=><NativeText {...props} style={language==='ar'?[{writingDirection:'rtl',textAlign:'right'},props.style]:props.style}>{React.Children.map(props.children,child=>typeof child==='string'?translate(child):child)}</NativeText>;
+ const TextInput=(props:TextInputProps)=><NativeTextInput {...props} showSoftInputOnFocus={true} placeholder={props.placeholder?translate(props.placeholder):props.placeholder} style={language==='ar'?[{writingDirection:'rtl',textAlign:'right'},props.style]:props.style}/>;
  const completed=tasks.filter(t=>done.includes(t.id)).length;
  const progress=tasks.length?Math.round(completed/tasks.length*100):0;
  const totalPoints=useMemo(()=>tasks.filter(t=>done.includes(t.id)).reduce((s,t)=>s+t.points,0),[done,tasks]);
@@ -117,14 +174,14 @@ export default function App(){
 
  useEffect(()=>{let active=true;(async()=>{try{
   const raw=await AsyncStorage.getItem(STORE);
-  if(raw&&active){const s=JSON.parse(raw);setName(s.name||'Player');setAvatar(s.avatar||null);setDone(s.done||[]);setSubtaskDone(s.subtaskDone||[]);setThemeMode(s.themeMode||'dark');}
+  if(raw&&active){const s=JSON.parse(raw);setName(s.name||'Player');setAvatar(s.avatar||null);setDone(s.done||[]);setSubtaskDone(s.subtaskDone||[]);setThemeMode(s.themeMode||'dark');setLanguage(s.language==='ar'?'ar':'en');}
   if(supabase){
    const {data:sess}=await supabase.auth.getSession();let uid=sess.session?.user.id;setAccountEmail(sess.session?.user.email||'');setAccountVerified(Boolean(sess.session?.user.email_confirmed_at));
    if(!uid){const {data,error}=await supabase.auth.signInAnonymously();if(error)throw error;uid=data.user?.id;}
    if(uid&&active){setUserId(uid);const {data:p}=await supabase.from('profiles').select('name,avatar_path').eq('id',uid).maybeSingle();if(p?.name)setName(p.name);if(p?.avatar_path){setAvatarPath(p.avatar_path);const {data:a}=await supabase.storage.from('avatars').createSignedUrl(p.avatar_path,3600);if(a?.signedUrl)setAvatar(a.signedUrl);}}
   }
  }catch(e:any){toast(e?.message||'Could not start SONIUM');}finally{if(active)setLoading(false);}})();return()=>{active=false;};},[]);
- useEffect(()=>{saveLocal({name,avatar,done,subtaskDone,themeMode}).catch(()=>{});},[name,avatar,done,subtaskDone,themeMode]);
+ useEffect(()=>{saveLocal({name,avatar,done,subtaskDone,themeMode,language}).catch(()=>{});},[name,avatar,done,subtaskDone,themeMode,language]);
  useEffect(()=>{Animated.spring(progressAnim,{toValue:progressPeek?1:0,useNativeDriver:false,friction:8,tension:75}).start();},[progressPeek,progressAnim]);
  useEffect(()=>{
   const show=Keyboard.addListener('keyboardDidShow',()=>setKeyboardVisible(true));
