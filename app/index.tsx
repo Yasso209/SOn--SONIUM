@@ -251,14 +251,10 @@ export default function App(){
  const [penaltyCustom,setPenaltyCustom]=useState('');
  const [showDays,setShowDays]=useState(false);
  const [showPrayers,setShowPrayers]=useState(false);
- const [modal,setModal]=useState<'create'|'join'|'privacy'|'account'|'report'|'task'|'rename'|null>(null);
+ const [modal,setModal]=useState<'create'|'join'|'privacy'|'report'|'task'|'rename'|null>(null);
  const [reportUser,setReportUser]=useState('');
  const [reportNote,setReportNote]=useState('');
  const [reportReason,setReportReason]=useState('abuse');
- const [email,setEmail]=useState('');
- const [password,setPassword]=useState('');
- const [accountEmail,setAccountEmail]=useState('');
- const [accountVerified,setAccountVerified]=useState(false);
  const [profileEdit,setProfileEdit]=useState(false);
  const [loading,setLoading]=useState(true);
  const [userId,setUserId]=useState<string|null>(null);
@@ -303,7 +299,7 @@ export default function App(){
   const raw=await AsyncStorage.getItem(STORE);
   if(raw&&active){const s=JSON.parse(raw);setName(s.name||'Player');setAvatar(s.avatar||null);setDone(s.done||[]);setSubtaskDone(s.subtaskDone||[]);setThemeMode(s.themeMode||'dark');setLanguage(s.language==='ar'?'ar':'en');}
   if(supabase){
-   const {data:sess}=await supabase.auth.getSession();let uid=sess.session?.user.id;setAccountEmail(sess.session?.user.email||'');setAccountVerified(Boolean(sess.session?.user.email_confirmed_at));
+   const {data:sess}=await supabase.auth.getSession();let uid=sess.session?.user.id;
    if(!uid){const {data,error}=await supabase.auth.signInAnonymously();if(error)throw error;uid=data.user?.id;}
    if(uid&&active){setUserId(uid);const {data:p}=await supabase.from('profiles').select('name,avatar_path').eq('id',uid).maybeSingle();if(p?.name)setName(p.name);if(p?.avatar_path){setAvatarPath(p.avatar_path);const {data:a}=await supabase.storage.from('avatars').createSignedUrl(p.avatar_path,3600);if(a?.signedUrl)setAvatar(a.signedUrl);}}
   }
@@ -585,8 +581,6 @@ export default function App(){
   {text:'Cancel',style:'cancel'}
  ]);
 
- const saveAccount=async()=>{if(!supabase||!email.includes('@'))return toast('Enter a valid email address');const {data:current,error:getError}=await supabase.auth.getUser();if(getError||!current.user)return toast(getError?.message||'Sign in again first');const verified=Boolean(current.user.email_confirmed_at)&&current.user.email?.toLowerCase()===email.trim().toLowerCase();setAccountVerified(verified);if(!verified){const {data,error}=await supabase.auth.updateUser({email:email.trim()});if(error){toast(error.message);return;}setAccountEmail(email.trim());toast('Confirmation email sent. Confirm it, then return here to set your password.');return;}if(password.length<8)return toast('After confirming your email, enter a password of at least 8 characters');const {error}=await supabase.auth.updateUser({password});if(error)toast(error.message);else{setPassword('');setAccountEmail(email.trim());setAccountVerified(true);toast('Password saved · your account is now recoverable');}};
- const signIn=async()=>{if(!supabase||!email.includes('@')||!password)return;const {data,error}=await supabase.auth.signInWithPassword({email:email.trim(),password});if(error)toast(error.message);else{setUserId(data.user.id);setAccountEmail(data.user.email||email.trim());setAccountVerified(Boolean(data.user.email_confirmed_at));const {data:p}=await supabase.from('profiles').select('name,avatar_path').eq('id',data.user.id).maybeSingle();if(p?.name)setName(p.name);if(p?.avatar_path){setAvatarPath(p.avatar_path);const {data:a}=await supabase.storage.from('avatars').createSignedUrl(p.avatar_path,3600);if(a?.signedUrl)setAvatar(a.signedUrl);}setModal(null);setPassword('');toast('Account restored and synced');}};
  const Card=({children,style}:any)=><View style={[styles.card,{backgroundColor:C.card,borderColor:C.line},style]}>{children}</View>;
  const Section=({title,right,onRight}:any)=>{
   const key=String(title).toLowerCase();
@@ -733,12 +727,6 @@ export default function App(){
    </View>
    {profileEdit&&<><TextInput value={name} onChangeText={setName} maxLength={24} placeholder="Your display name" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card2,borderColor:C.line,marginTop:13}]}/><View style={{flexDirection:'row',gap:8}}><TouchableOpacity style={[styles.smallBtn,{backgroundColor:C.card2,marginTop:8,flex:1,alignItems:'center'}]} onPress={pickAvatar}><Text style={{color:C.fg,fontWeight:'800'}}>Choose photo</Text></TouchableOpacity><TouchableOpacity style={[styles.smallBtn,{backgroundColor:C.accent,marginTop:8,flex:1,alignItems:'center'}]} onPress={saveProfile}><Text style={{color:C.accentInk,fontWeight:'900'}}>Save profile</Text></TouchableOpacity></View></>}
   </Card>
-  <Section title="Account & recovery"/>
-  <Card style={{padding:16}}>
-   <View style={{flexDirection:'row',alignItems:'center',gap:8}}><Ionicons name="shield-checkmark" size={21} color={accountEmail?C.accent:C.muted}/><Text style={{color:C.fg,fontWeight:'900'}}>{accountEmail?(accountVerified?accountEmail:'Verify email · '+accountEmail):'Anonymous account'}</Text></View>
-   <Text style={{color:C.muted,fontSize:11,lineHeight:18,marginTop:6}}>{accountVerified?'Your email is confirmed and your password is linked. Use this email and password to restore the same SONIUM profile on another phone.':accountEmail?'We sent a verification email. Confirm it, then return here and enter your password to finish linking.':'Your progress is currently tied to this device session. Link an email and password to restore it if you change phones.'}</Text>
-   <TouchableOpacity onPress={()=>setModal('account')} style={[styles.smallBtn,{backgroundColor:C.accent,alignSelf:'flex-start',marginTop:11}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>{accountVerified?'Update password':accountEmail?'Set password after verification':'Link email & password'}</Text></TouchableOpacity>
-  </Card>
   <Section title="Preferences"/>
   <Card style={{padding:16}}>
    <Text style={{color:C.fg,fontWeight:'800'}}>Appearance</Text>
@@ -843,7 +831,7 @@ export default function App(){
    <Pressable style={[StyleSheet.absoluteFillObject,{zIndex:0}]} onPress={()=>{Keyboard.dismiss();setModal(null);}} />
    <KeyboardAvoidingView pointerEvents="box-none" enabled={Platform.OS==='ios'} behavior={Platform.OS==='ios'?'padding':undefined} style={{flex:1,justifyContent:'flex-end',zIndex:1}}>
     <View style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'88%'}]}>
-    <View style={styles.sheetHead}><View style={{flex:1}}><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>{modal==='task'?(activeTask?'Edit personal task':'New personal task'):modal==='create'?'Create a crew':modal==='join'?'Join a crew':modal==='account'?'Account & recovery':modal==='report'?'Report a member':modal==='rename'?'Rename crew':'Privacy & moderation'}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>SONIUM · Make today count</Text></View><TouchableOpacity onPress={()=>setModal(null)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
+    <View style={styles.sheetHead}><View style={{flex:1}}><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>{modal==='task'?(activeTask?'Edit personal task':'New personal task'):modal==='create'?'Create a crew':modal==='join'?'Join a crew'modal==='report'?'Report a member':modal==='rename'?'Rename crew':'Privacy & moderation'}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>SONIUM · Make today count</Text></View><TouchableOpacity onPress={()=>setModal(null)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
     <ScrollView keyboardShouldPersistTaps="always" keyboardDismissMode="on-drag" nestedScrollEnabled style={{flexShrink:1,maxHeight:'72%'}} >
      {modal==='task'?<>
       <Text style={{color:C.muted,fontSize:11,marginBottom:6}}>TASK NAME</Text>
@@ -880,12 +868,6 @@ export default function App(){
      </>:modal==='join'?<>
       <TextInput value={inviteCode} onChangeText={setInviteCode} autoCapitalize="characters" placeholder="Invite code" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line}]}/>
       <TouchableOpacity onPress={joinCrew} style={[styles.cta,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>Join crew</Text></TouchableOpacity>
-     </>:modal==='account'?<>
-      <Text style={{color:C.muted,fontSize:12,lineHeight:18}}>Link this anonymous profile to an email and password to restore your progress on another phone. You may need to confirm the email from your inbox.</Text>
-      <TextInput value={email} onChangeText={setEmail} autoCapitalize="none" keyboardType="email-address" placeholder="Email address" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line,marginTop:10}]}/>
-      <TextInput value={password} onChangeText={setPassword} secureTextEntry placeholder="Password (8+ characters)" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line,marginTop:8}]}/>
-      <TouchableOpacity onPress={saveAccount} style={[styles.cta,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>Link current account</Text></TouchableOpacity>
-      <TouchableOpacity onPress={signIn} style={{marginTop:12}}><Text style={{color:C.accent,fontWeight:'800'}}>Sign in to existing account</Text></TouchableOpacity>
      </>:<>
       <Text style={{color:C.fg,fontSize:13,lineHeight:21}}>Crew chat messages are visible to crew members and may be reviewed by the app owner for safety and moderation. Do not share private or sensitive information in crew chat. Photo proof is intended to be visible only to members of the relevant crew. Each crew member can review another member's task photo.</Text>
       <TouchableOpacity onPress={()=>setModal(null)} style={[styles.cta,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>I understand</Text></TouchableOpacity>
