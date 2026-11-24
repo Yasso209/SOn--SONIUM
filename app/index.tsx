@@ -44,6 +44,24 @@ function getWeeklyVerdictTitle(){
  return 'Weekly Verdict · '+prompt+' · '+year+'-W'+String(week).padStart(2,'0');
 }
 const AR:Record<string,string>={
+ 'Finish one small task you have been putting off':'أنجز مهمة صغيرة مأجلها',
+ 'Organize your study notes':'رتب ملاحظات مذاكرتك',
+ 'Plan next week together':'خططوا للأسبوع الجاي مع بعض',
+ 'Read something new for 20 minutes':'اقرأ حاجة جديدة لمدة 20 دقيقة',
+ 'Tidy your study space':'رتب مكان مذاكرتك',
+ 'Learn five new words':'اتعلم خمس كلمات جديدة',
+ 'Share one useful thing you learned':'شارك حاجة مفيدة اتعلمتها',
+ 'Prepare a simple plan for tomorrow':'جهز خطة بسيطة لبكرة',
+ 'Talk with your crew':'اتكلم مع فريقك',
+ 'Start the crew conversation.':'ابدأ محادثة مع فريقك.',
+ 'CREW POINTS':'نقاط الفريق','Members · ':'الأعضاء · ','in this crew':'في الفريق',
+ 'No crew yet':'لسه مفيش فريق','Your rank':'ترتيبك','Task steps':'خطوات المهمة',
+ 'Your challenge days':'أيام التحدي','Day tasks':'مهام اليوم','Done':'تم','Edit task':'تعديل المهمة',
+ 'No shared tasks yet. Add the first crew challenge above.':'لسه مفيش مهام مشتركة. أضف أول تحدي للفريق من فوق.',
+ 'Points appear here after tasks are completed.':'النقاط هتظهر هنا بعد إكمال المهام.',
+ 'Reports are private and reviewed by the app owner.':'البلاغات خاصة وبيتم مراجعتها من مسؤول التطبيق.',
+ 'Details (optional)':'تفاصيل (اختياري)','Send report':'إرسال البلاغ','Email address':'البريد الإلكتروني','Password (8+ characters)':'كلمة المرور (8 أحرف أو أكثر)',
+ 'Link current account':'ربط الحساب الحالي','Sign in to existing account':'تسجيل الدخول لحساب موجود',
  'Home':'الرئيسية','Stats':'الإحصائيات','Crew':'الفريق','Settings':'الإعدادات',
  'YOUR PEOPLE':'أصحابك','YOUR ACCOUNT':'حسابك','Make it yours':'خصص تجربتك','Your':'مساحتك','Crew.':'فريقك.',
  'Build good habits with your people.':'ابنوا عادات أفضل مع بعض.','ACTIVE CREW':'الفريق الحالي','Invite friends +':'ادعُ أصحابك +','Invite':'دعوة','Report':'إبلاغ','You':'أنت',
@@ -153,7 +171,12 @@ export default function App(){
  const systemScheme=useColorScheme();
  const isLight=themeMode==='light'||(themeMode==='system'&&systemScheme==='light');
  const C=isLight?colors.light:colors.dark;
- const translate=(value:string)=>language==='ar'?(AR[value]||value):value;
+ const translate=(value:string)=>{
+  if(language!=='ar')return value;
+  const weekly=value.match(/^Weekly Verdict · (.+) · (\\d{4}-W\\d{2})$/);
+  if(weekly)return 'مهمة الأسبوع · '+(AR[weekly[1]]||weekly[1])+' · '+weekly[2];
+  return AR[value]||value;
+ };
  const Text=(props:TextProps)=><NativeText {...props} style={language==='ar'?[{writingDirection:'rtl',textAlign:'right'},props.style]:props.style}>{React.Children.map(props.children,child=>typeof child==='string'?translate(child):child)}</NativeText>;
  const TextInput=(props:TextInputProps)=><NativeTextInput {...props} showSoftInputOnFocus={true} placeholder={props.placeholder?translate(props.placeholder):props.placeholder} style={language==='ar'?[{writingDirection:'rtl',textAlign:'right'},props.style]:props.style}/>;
  const completed=tasks.filter(t=>done.includes(t.id)).length;
