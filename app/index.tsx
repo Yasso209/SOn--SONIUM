@@ -98,7 +98,7 @@ const AR:Record<string,string>={
   'Create a crew or join your friends with an invite code.':'أنشئ فريق أو انضم لأصحابك بكود الدعوة.',
   'Choose a day to view its personal tasks':'اختار يوم عشان تشوف مهامه الشخصية',
   'DAY':'اليوم',
-  'SONIUM · Make today count':'سونيوم · خلّي النهارده له قيمة',
+  'SONIUM · Make today count':'SONIUM · خلّي النهارده له قيمة',
   'Crew chat messages are visible to crew members and may be reviewed by the app owner for safety and moderation. Do not share private or sensitive information in crew chat. Photo proof is intended to be visible only to members of the relevant crew. Each crew member can review another member\'s task photo.':'رسائل دردشة الفريق ظاهرة لأعضاء الفريق، وقد يراجعها مسؤول التطبيق للسلامة والإشراف. متشاركش معلومات شخصية أو حساسة في الدردشة. صور إثبات المهام مخصصة لأعضاء الفريق المعني فقط، ويقدر كل عضو يراجع إثباتات باقي الأعضاء.',
   'Home':'الرئيسية',
   'Stats':'الإحصائيات',
@@ -152,7 +152,6 @@ const AR:Record<string,string>={
   'System':'حسب الجهاز',
   'Your crews':'فرقك',
   'About':'عن التطبيق',
-  'SONIUM':'سونيوم',
   'Created by Yassin Mohamed':'تطوير: Yassin Mohamed',
   'Privacy & moderation':'الخصوصية والإشراف',
   'Share SONIUM':'مشاركة SONIUM',
@@ -278,8 +277,9 @@ export default function App(){
   if(weekly)return 'مهمة الأسبوع · '+(AR[weekly[2]]||weekly[2])+' · '+weekly[1];
   return AR[value]||value;
  };
- const Text=(props:TextProps)=><NativeText {...props} style={language==='ar'?[{writingDirection:'rtl',textAlign:'right'},props.style]:props.style}>{React.Children.map(props.children,child=>typeof child==='string'?translate(child):child)}</NativeText>;
- const TextInput=(props:TextInputProps)=><NativeTextInput {...props} showSoftInputOnFocus={true} placeholder={props.placeholder?translate(props.placeholder):props.placeholder} style={language==='ar'?[{writingDirection:'rtl',textAlign:'right'},props.style]:props.style}/>;
+ // Stable component identities prevent focused native inputs from being remounted on each render.
+ const Text=useMemo(()=>(props:TextProps)=><NativeText {...props} style={language==='ar'?[{writingDirection:'rtl',textAlign:'right'},props.style]:props.style}>{React.Children.map(props.children,child=>typeof child==='string'?translate(child):child)}</NativeText>,[language]);
+ const TextInput=useMemo(()=>(props:TextInputProps)=><NativeTextInput {...props} showSoftInputOnFocus={true} placeholder={props.placeholder?translate(props.placeholder):props.placeholder} style={language==='ar'?[{writingDirection:'rtl',textAlign:'right'},props.style]:props.style}/>,[language]);
  const completed=tasks.filter(t=>done.includes(t.id)).length;
  const progress=tasks.length?Math.round(completed/tasks.length*100):0;
  const totalPoints=useMemo(()=>tasks.filter(t=>done.includes(t.id)).reduce((s,t)=>s+t.points,0),[done,tasks]);
@@ -595,12 +595,12 @@ export default function App(){
   {text:'Cancel',style:'cancel'}
  ]);
 
- const Card=({children,style}:any)=><View style={[styles.card,{backgroundColor:C.card,borderColor:C.line},style]}>{children}</View>;
- const Section=({title,right,onRight}:any)=>{
+ const Card=useMemo(()=>( {children,style}:any)=><View style={[styles.card,{backgroundColor:C.card,borderColor:C.line},style]}>{children}</View>,[C]);
+ const Section=useMemo(()=>({title,right,onRight}:any)=>{
   const key=String(title).toLowerCase();
   const icon=key.includes('task')?'checkbox-outline':key.includes('performance')||key.includes('progress')?'stats-chart-outline':key.includes('crew')||key.includes('member')?'people-outline':key.includes('leaderboard')?'trophy-outline':key.includes('chat')?'chatbubbles-outline':key.includes('about')?'information-circle-outline':key.includes('preference')?'options-outline':key.includes('account')?'person-circle-outline':key.includes('activity')?'pulse-outline':'star-outline';
   return <View style={styles.section}><View style={{flexDirection:'row',alignItems:'center',gap:8}}><Ionicons name={icon as any} size={19} color={C.accent}/><Text style={[styles.sectionTitle,{color:C.fg}]}>{title}</Text></View>{right&&<TouchableOpacity onPress={onRight}><Text style={{color:C.accent,fontWeight:'800'}}>{right}</Text></TouchableOpacity>}</View>;
- };
+ },[C,Text]);
  const TaskRow=({task}: {task:PersonalTask})=>{
   const checked=done.includes(task.id);const stepsDone=(task.subtasks||[]).filter((_,i)=>subtaskDone.includes(task.id+':sub:'+i)).length;const hasSteps=(task.subtasks||[]).length>0;
   return <Pressable onPress={()=>{if(hasSteps){setActiveTask(task);setShowPrayers(true);}else toggleTask(task.id);}} onLongPress={()=>{if(hasSteps){setActiveTask(task);setShowPrayers(true);}else openTaskEditor(task);}} delayLongPress={450} style={[styles.task,{backgroundColor:C.card,borderColor:C.line}]}>
@@ -794,7 +794,8 @@ export default function App(){
   screenFade.setValue(0.72);
   Animated.timing(screenFade,{toValue:1,duration:240,useNativeDriver:true}).start();
  },[tab,screenFade]);
- const screen=tab==='Home'?<Home/>:tab==='Stats'?<Stats/>:tab==='Crew'?<CrewView/>:<Settings/>;
+ // Render helpers directly so keystrokes do not remount the active tab's component tree.
+ const screen=tab==='Home'?Home():tab==='Stats'?Stats():tab==='Crew'?CrewView():Settings();
  if(loading||!fontsLoaded)return <SafeAreaView style={{flex:1,backgroundColor:C.bg,alignItems:'center',justifyContent:'center'}}><ActivityIndicator color={C.accent}/><Text style={{color:C.muted,marginTop:12}}>Preparing your challenge...</Text></SafeAreaView>;
  return <KeyboardAvoidingView style={{flex:1}} enabled={Platform.OS==='ios'} behavior={Platform.OS==='ios'?'padding':undefined}><SafeAreaView style={{flex:1,backgroundColor:C.bg,direction:language==='ar'?'rtl':'ltr'}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><Animated.View style={{flex:1,opacity:screenFade}}><ScrollView keyboardShouldPersistTaps="always" keyboardDismissMode="on-drag" refreshControl={<RefreshControl refreshing={refreshing} onRefresh={refreshApp} tintColor="transparent" colors={['transparent']} progressBackgroundColor="transparent"/>} contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{refreshing&&<View style={{alignItems:'center',paddingBottom:10}}><Animated.Image source={mascot} resizeMode="contain" style={{width:34,height:34,transform:[{rotate:refreshRotation.interpolate({inputRange:[0,1],outputRange:['0deg','360deg']})}]}}/></View>}{screen}</ScrollView></Animated.View>{!keyboardVisible&&<View style={[styles.nav,{backgroundColor:C.card,borderColor:C.line}]}>{(['Home','Stats','Crew','Settings'] as Tab[]).map((t,i)=><TouchableOpacity key={t} accessibilityRole="button" accessibilityLabel={t} onPress={()=>setTab(t)} style={[styles.navItem,{backgroundColor:tab===t?C.accent:'transparent'}]}><Ionicons name={((['home','stats-chart','people','settings'] as const)[i]) as any} size={23} color={tab===t?C.accentInk:C.muted}/><Text style={{fontSize:11,fontWeight:'900',color:tab===t?C.accentInk:C.muted}}>{t}</Text></TouchableOpacity>)}</View>}{tab==='Crew'&&crew&&!keyboardVisible&&!chatOpen&&<TouchableOpacity accessibilityLabel="Open crew chat" onPress={()=>setChatOpen(true)} style={[styles.chatFab,{backgroundColor:C.accent}]}><Ionicons name="chatbubbles" size={23} color={C.accentInk}/></TouchableOpacity>}{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
  <Modal visible={showDays} animationType="slide" transparent onRequestClose={()=>setShowDays(false)}>
