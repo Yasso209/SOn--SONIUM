@@ -1,5 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Alert, Image, Modal, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Platform, Switch, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, Animated, Image, Modal, Pressable, SafeAreaView, ScrollView, Share, StatusBar, StyleSheet, Platform, Switch, Text, TextInput, TouchableOpacity, View, useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
@@ -9,14 +9,13 @@ import mascot from '../assets/mascot.webp';
 import { colors, ThemeMode } from '../src/theme/tokens';
 import { isSupabaseConfigured, supabase } from '../src/lib/supabase';
 
-const TASKS = [
-  {id:'water',title:'Drink 2L of water',points:5,icon:'water-outline' as const},
-  {id:'read',title:'Read for 20 minutes',points:10,icon:'book-outline' as const},
-  {id:'workout',title:'Workout',points:20,icon:'barbell-outline' as const},
-  {id:'plan',title:'Plan tomorrow',points:5,icon:'calendar-outline' as const},
-  {id:'prayers',title:'Daily prayers',points:15,icon:'moon-outline' as const},
-  {id:'shower',title:'Take a shower',points:5,icon:'water' as const},
-  {id:'study',title:'Study for 1 hour',points:10,icon:'school-outline' as const},
+const TASK_SUGGESTIONS = [
+  {title:'Drink 2L of water',points:5,icon:'water-outline',subtasks:[]},
+  {title:'Read for 20 minutes',points:10,icon:'book-outline',subtasks:[]},
+  {title:'Workout',points:20,icon:'barbell-outline',subtasks:['Warm up','Main workout','Stretch']},
+  {title:'Plan tomorrow',points:5,icon:'calendar-outline',subtasks:[]},
+  {title:'Daily prayers',points:15,icon:'moon-outline',subtasks:['Fajr','Dhuhr','Asr','Maghrib','Isha']},
+  {title:'Study for 1 hour',points:10,icon:'school-outline',subtasks:['First 25 minutes','Short break','Second 25 minutes']},
 ];
 const PRAYERS=['Fajr','Dhuhr','Asr','Maghrib','Isha'];
 const STICKERS=['🔥','💪','🏆','⚡','🎯','👏','🚀','💚'];
@@ -24,6 +23,8 @@ const STORE='sonium-v1-state';
 type Tab='Home'|'Stats'|'Crew'|'Settings';
 type Crew={id:string;name:string;invite_code:string;start_date:string;days:number;penalty?:string;penalty_custom?:string|null};
 type Msg={id:string|number;user_id:string;body:string|null;sticker:string|null;created_at:string};
+type PersonalTask={id:string;user_id?:string;crew_id?:string;title:string;details:string|null;points:number;icon:string;subtasks:string[];reminder_enabled:boolean;reminder_time:string|null;sort_order:number};
+type CrewMember={user_id:string;name:string;avatar_url?:string|null};
 
 Notifications.setNotificationHandler({handleNotification:async()=>({shouldShowAlert:true,shouldShowBanner:true,shouldShowList:true,shouldPlaySound:false,shouldSetBadge:false})});
 
@@ -33,6 +34,22 @@ export default function App(){
  const [name,setName]=useState('Player');
  const [avatar,setAvatar]=useState<string|null>(null);
  const [done,setDone]=useState<string[]>([]);
+ const [subtaskDone,setSubtaskDone]=useState<string[]>([]);
+ const [tasks,setTasks]=useState<PersonalTask[]>([]);
+ const [totalEarned,setTotalEarned]=useState(0);
+ const [activeTask,setActiveTask]=useState<PersonalTask|null>(null);
+ const [taskTitle,setTaskTitle]=useState('');
+ const [taskDetails,setTaskDetails]=useState('');
+ const [taskPoints,setTaskPoints]=useState('10');
+ const [taskIcon,setTaskIcon]=useState('checkmark-circle-outline');
+ const [taskSubtasks,setTaskSubtasks]=useState('');
+ const [taskReminder,setTaskReminder]=useState(false);
+ const [taskReminderTime,setTaskReminderTime]=useState('20:00');
+ const [taskSaving,setTaskSaving]=useState(false);
+ const [avatarPath,setAvatarPath]=useState<string|null>(null);
+ const [progressPeek,setProgressPeek]=useState(false);
+ const progressAnim=useRef(new Animated.Value(0)).current;
+ const [proofReviewBusy,setProofReviewBusy]=useState<string|null>(null);
  const [prayers,setPrayers]=useState<string[]>([]);
  const [day,setDay]=useState(1);
  const [currentDay,setCurrentDay]=useState(1);
@@ -40,7 +57,7 @@ export default function App(){
  const [crew,setCrew]=useState<Crew|null>(null);
  const [crews,setCrews]=useState<Crew[]>([]);
  const [activeCrewId,setActiveCrewId]=useState<string|null>(null);
- const [members,setMembers]=useState<{user_id:string;name:string}[]>([]);
+ const [members,setMembers]=useState<CrewMember[]>([]);
  const [board,setBoard]=useState<any[]>([]);
  const [messages,setMessages]=useState<Msg[]>([]);
  const [sharedTasks,setSharedTasks]=useState<any[]>([]);
@@ -52,7 +69,7 @@ export default function App(){
  const [penaltyCustom,setPenaltyCustom]=useState('');
  const [showDays,setShowDays]=useState(false);
  const [showPrayers,setShowPrayers]=useState(false);
- const [modal,setModal]=useState<'create'|'join'|'privacy'|'account'|'report'|null>(null);
+ const [modal,setModal]=useState<'create'|'join'|'privacy'|'account'|'report'|'task'|null>(null);
  const [reportUser,setReportUser]=useState('');
  const [reportNote,setReportNote]=useState('');
  const [reportReason,setReportReason]=useState('abuse');
@@ -74,15 +91,20 @@ export default function App(){
  const systemScheme=useColorScheme();
  const isLight=themeMode==='light'||(themeMode==='system'&&systemScheme==='light');
  const C=isLight?colors.light:colors.dark;
- const completed=TASKS.filter(t=>done.includes(t.id)).length;
- const progress=Math.round(completed/TASKS.length*100);
- const totalPoints=useMemo(()=>TASKS.filter(t=>done.includes(t.id)).reduce((s,t)=>s+t.points,0),[done]);
+ const completed=tasks.filter(t=>done.includes(t.id)).length;
+ const progress=tasks.length?Math.round(completed/tasks.length*100):0;
+ const totalPoints=useMemo(()=>tasks.filter(t=>done.includes(t.id)).reduce((s,t)=>s+t.points,0),[done,tasks]);
+ const weekPoints=weeklyPoints.reduce((sum,n)=>sum+n,0);
+ const crewPoints=board.reduce((sum,p)=>sum+Number(p.points||0),0);
+ const myRank=Math.max(0,board.findIndex(p=>p.user_id===userId)+1);
+ const daysLeft=crew?Math.max(0,(crew.days||14)-currentDay):14-currentDay;
  const online=Boolean(isSupabaseConfigured&&userId);
  const toast=(s:string)=>{setNotice(s);setTimeout(()=>setNotice(''),2500);};
  const saveLocal=async(patch:Record<string,unknown>)=>{const raw=await AsyncStorage.getItem(STORE);await AsyncStorage.setItem(STORE,JSON.stringify({...(raw ? JSON.parse(raw) : {}), ...patch}));};
 
  useEffect(()=>{let active=true;(async()=>{try{const raw=await AsyncStorage.getItem(STORE);if(raw&&active){const s=JSON.parse(raw);setName(s.name||'Player');setAvatar(s.avatar||null);setDone(s.done||[]);setPrayers(s.prayers||[]);setThemeMode(s.themeMode||'dark');setReminder(Boolean(s.reminder));}if(supabase){const {data:sess}=await supabase.auth.getSession();let uid=sess.session?.user.id;if(!uid){const {data,error}=await supabase.auth.signInAnonymously();if(error)throw error;uid=data.user?.id;}if(uid&&active){setUserId(uid);const {data:p}=await supabase.from('profiles').select('name').eq('id',uid).maybeSingle();if(p?.name)setName(p.name);}}}catch(e:any){toast(e?.message||'Could not start SONIUM');}finally{if(active)setLoading(false);}})();return()=>{active=false;};},[]);
- useEffect(()=>{saveLocal({name,avatar,done,prayers,themeMode,reminder}).catch(()=>{});},[name,avatar,done,prayers,themeMode,reminder]);
+ useEffect(()=>{saveLocal({name,avatar,done,subtaskDone,themeMode,reminder}).catch(()=>{});},[name,avatar,done,subtaskDone,themeMode,reminder]);
+ useEffect(()=>{Animated.spring(progressAnim,{toValue:progressPeek?1:0,useNativeDriver:false,friction:8,tension:75}).start();},[progressPeek,progressAnim]);
  const refreshStats=async(cId:string,uid:string)=>{if(!supabase)return;const since=new Date();since.setDate(since.getDate()-6);since.setHours(0,0,0,0);const {data}=await supabase.from('completions').select('points,done_at').eq('crew_id',cId).eq('user_id',uid).gte('done_at',since.toISOString());const labels:string[]=[];const values=Array(7).fill(0);for(let i=6;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);labels.push(d.toLocaleDateString('en-US',{weekday:'short'}));}const days=new Set<string>();(data||[]).forEach((r:any)=>{const d=new Date(r.done_at);d.setHours(0,0,0,0);days.add(d.toDateString());const i=Math.floor((d.getTime()-since.getTime())/86400000);if(i>=0&&i<7)values[i]+=Number(r.points||0);});setWeeklyPoints(values);setWeekLabels(labels);let cursor=new Date();cursor.setHours(0,0,0,0);if(!days.has(cursor.toDateString()))cursor.setDate(cursor.getDate()-1);let n=0;while(days.has(cursor.toDateString())&&n<30){n++;cursor.setDate(cursor.getDate()-1);}setStreak(n);};
  const loadCrew=async()=>{const client=supabase;if(!client||!userId)return;const {data:adminResult}=await client.rpc('is_admin');const admin=adminResult===true;setIsAdmin(admin);if(admin){const {data:rs}=await client.from('reports').select('*').order('created_at',{ascending:false}).limit(50);const {data:ps}=await client.from('profiles').select('id,name,banned').order('created_at',{ascending:false}).limit(100);const {data:cs}=await client.from('crews').select('id,name').order('created_at',{ascending:false}).limit(100);const {data:cms}=await client.from('crew_members').select('crew_id,user_id');const {data:msgs}=await client.from('messages').select('id,crew_id,user_id,body,sticker').order('created_at',{ascending:false}).limit(60);if(rs)setAdminReports(rs);if(ps)setAdminProfiles(ps);if(cs)setAdminCrews(cs.map((x:any)=>({...x,members:(cms||[]).filter((m:any)=>m.crew_id===x.id)})));if(msgs)setAdminMessages(msgs);}const {data:ms}=await client.from('crew_members').select('crew_id').eq('user_id',userId);const ids=(ms||[]).map((x:any)=>x.crew_id);if(!ids.length){setCrews([]);setCrew(null);setMembers([]);setBoard([]);setMessages([]);setSharedTasks([]);return;}const {data:cs}=await client.from('crews').select('id,name,invite_code,start_date,days,penalty,penalty_custom').in('id',ids);const list=(cs||[]) as Crew[];setCrews(list);const selected=list.find(c=>c.id===activeCrewId)||list[0];if(!selected)return;setCrew(selected);setActiveCrewId(selected.id);const start=new Date(selected.start_date+'T00:00:00');const today=new Date();today.setHours(0,0,0,0);const elapsed=Math.floor((today.getTime()-start.getTime())/86400000)+1;const activeDay=Math.max(1,Math.min(selected.days||14,elapsed));setCurrentDay(activeDay);setDay(activeDay);setChallengeActive(elapsed>=1&&elapsed<=(selected.days||14));const {data:checks}=await client.from('completions').select('task_id').eq('crew_id',selected.id).eq('user_id',userId).eq('day',activeDay);if(checks){setDone(checks.filter((x:any)=>!String(x.task_id).startsWith('prayers_')).map((x:any)=>x.task_id));setPrayers(checks.filter((x:any)=>String(x.task_id).startsWith('prayers_')).map((x:any)=>({prayers_fajr:'Fajr',prayers_dhuhr:'Dhuhr',prayers_asr:'Asr',prayers_maghrib:'Maghrib',prayers_isha:'Isha'} as any)[x.task_id]).filter(Boolean));}const {data:cm}=await client.from('crew_members').select('user_id').eq('crew_id',selected.id);const memberIds=(cm||[]).map((x:any)=>x.user_id);const {data:people}=await client.from('profiles').select('id,name').in('id',memberIds);if(people)setMembers(people.map((p:any)=>({user_id:p.id,name:p.name||'Player'})));const {data:lb}=await client.from('crew_leaderboard').select('user_id,name,points').eq('crew_id',selected.id).order('points',{ascending:false});if(lb)setBoard(lb);const {data:msgs}=await client.from('messages').select('id,user_id,body,sticker,created_at').eq('crew_id',selected.id).order('created_at',{ascending:false}).limit(50);if(msgs)setMessages(msgs.reverse());const {data:shared}=await client.from('shared_tasks').select('id,title,points,created_by,created_at,shared_proofs(user_id,photo_path)').eq('crew_id',selected.id).order('created_at',{ascending:false});if(shared){const enriched=await Promise.all(shared.map(async(t:any)=>({...t,shared_proofs:await Promise.all((t.shared_proofs||[]).map(async(p:any)=>{const {data}=await client.storage.from('proofs').createSignedUrl(p.photo_path,3600);return {...p,signedUrl:data?.signedUrl||null};}))})));setSharedTasks(enriched);}await refreshStats(selected.id,userId);};
  useEffect(()=>{loadCrew();},[userId,activeCrewId]);
