@@ -8,6 +8,7 @@ import * as Notifications from 'expo-notifications';
 import mascot from '../assets/mascot.webp';
 import { colors, ThemeMode } from '../src/theme/tokens';
 import { isSupabaseConfigured, supabase } from '../src/lib/supabase';
+import FloatingTabBar from '../src/components/FloatingTabBar';
 
 const TASK_SUGGESTIONS = [
   {title:'Drink 2L of water',points:5,icon:'water-outline',subtasks:[]},
@@ -24,6 +25,9 @@ type Crew={id:string;name:string;invite_code:string;start_date:string;days:numbe
 type Msg={id:string|number;user_id:string;body:string|null;sticker:string|null;created_at:string};
 type PersonalTask={id:string;user_id?:string;crew_id?:string;title:string;details:string|null;points:number;icon:string;subtasks:string[];reminder_enabled:boolean;reminder_time:string|null;sort_order:number};
 type CrewMember={user_id:string;name:string;avatar_url?:string|null};
+type Streak={id:string;title:string;icon:string;weekly_target:number;sort_order:number};
+type StreakCheck={streak_id:string;day:number};
+const STREAK_IDEAS=[{title:'Shower',icon:'water-outline'},{title:'Personal hygiene',icon:'sparkles-outline'},{title:'Prayer',icon:'moon-outline'},{title:'Gaming session',icon:'game-controller-outline'},{title:'Stay awake 24h',icon:'eye-outline'}];
 
 Notifications.setNotificationHandler({handleNotification:async()=>({shouldShowAlert:true,shouldShowBanner:true,shouldShowList:true,shouldPlaySound:false,shouldSetBadge:false})});
 
@@ -67,7 +71,12 @@ export default function App(){
  const [penaltyCustom,setPenaltyCustom]=useState('');
  const [showDays,setShowDays]=useState(false);
  const [showPrayers,setShowPrayers]=useState(false);
- const [modal,setModal]=useState<'create'|'join'|'privacy'|'account'|'report'|'task'|null>(null);
+ const [modal,setModal]=useState<'create'|'join'|'privacy'|'account'|'report'|'task'|'streak'|null>(null);
+ const [streaks,setStreaks]=useState<Streak[]>([]);
+ const [streakChecks,setStreakChecks]=useState<StreakCheck[]>([]);
+ const [streakTitle,setStreakTitle]=useState('');
+ const [streakIcon,setStreakIcon]=useState('flame-outline');
+ const [streakTarget,setStreakTarget]=useState('0');
  const [reportUser,setReportUser]=useState('');
  const [reportNote,setReportNote]=useState('');
  const [reportReason,setReportReason]=useState('abuse');
@@ -136,6 +145,49 @@ export default function App(){
   setSubtaskDone(ids.filter((id:string)=>id.includes(':sub:')));
   setDay(dayNumber);
  };
+ const loadStreaks=async(cId:string)=>{
+  if(!supabase||!userId)return;
+  const [{data:rows},{data:checks}]=await Promise.all([
+   supabase.from('habit_streaks').select('id,title,icon,weekly_target,sort_order').eq('crew_id',cId).eq('user_id',userId).order('sort_order').order('created_at'),
+   supabase.from('habit_checks').select('streak_id,day').eq('crew_id',cId).eq('user_id',userId)
+  ]);
+  setStreaks((rows||[]) as Streak[]);
+  setStreakChecks((checks||[]).map((x:any)=>({streak_id:String(x.streak_id),day:Number(x.day)})));
+ };
+ const streakRun=(id:string)=>{
+  const days=new Set(streakChecks.filter(c=>c.streak_id===id).map(c=>c.day));
+  let d=days.has(currentDay)?currentDay:currentDay-1;let n=0;
+  while(d>=1&&days.has(d)){n++;d--;}
+  return n;
+ };
+ const streakWeek=(id:string,upTo:number)=>streakChecks.filter(c=>c.streak_id===id&&c.day>upTo-7&&c.day<=upTo).length;
+ const toggleStreak=async(st:Streak)=>{
+  if(!supabase||!userId||!crew)return;
+  if(day!==currentDay||!challengeActive){toast('Only today can be checked off');return;}
+  const was=streakChecks.some(c=>c.streak_id===st.id&&c.day===currentDay);
+  const result=was
+   ?await supabase.from('habit_checks').delete().match({streak_id:st.id,user_id:userId,day:currentDay})
+   :await supabase.from('habit_checks').insert({streak_id:st.id,user_id:userId,crew_id:crew.id,day:currentDay});
+  if(result.error){toast(result.error.message);return;}
+  setStreakChecks(old=>was?old.filter(c=>!(c.streak_id===st.id&&c.day===currentDay)):[...old,{streak_id:st.id,day:currentDay}]);
+  if(!was)toast(st.title+' · streak continues');
+ };
+ const openStreakEditor=()=>{setStreakTitle('');setStreakIcon('flame-outline');setStreakTarget('0');setShowDays(false);setModal('streak');};
+ const saveStreak=async()=>{
+  if(!supabase||!userId||!crew){toast('Create or join a crew first');return;}
+  const title=streakTitle.trim();const target=Number(streakTarget);
+  if(!title)return toast('Write a streak name first');
+  if(!Number.isInteger(target)||target<0||target>7)return toast('Weekly target must be 0 to 7');
+  const {data,error}=await supabase.from('habit_streaks').insert({user_id:userId,crew_id:crew.id,title:title.slice(0,40),icon:streakIcon,weekly_target:target,sort_order:streaks.length}).select('id,title,icon,weekly_target,sort_order').single();
+  if(error){toast(error.message);return;}
+  setStreaks(old=>[...old,data as Streak]);setModal(null);setShowDays(true);toast('Streak added');
+ };
+ const deleteStreak=(st:Streak)=>Alert.alert('Delete streak?','Its check history will be removed too.',[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:async()=>{
+  if(!supabase||!userId)return;
+  const {error}=await supabase.from('habit_streaks').delete().eq('id',st.id).eq('user_id',userId);
+  if(error){toast(error.message);return;}
+  setStreaks(old=>old.filter(x=>x.id!==st.id));setStreakChecks(old=>old.filter(c=>c.streak_id!==st.id));toast('Streak deleted');
+ }}]);
  const loadCrew=async()=>{
   const client=supabase;if(!client||!userId)return;
   const {data:adminResult}=await client.rpc('is_admin');const admin=adminResult===true;setIsAdmin(admin);
@@ -149,7 +201,7 @@ export default function App(){
   }
   const {data:ms}=await client.from('crew_members').select('crew_id').eq('user_id',userId);
   const ids=(ms||[]).map((x:any)=>x.crew_id);
-  if(!ids.length){setCrews([]);setCrew(null);setMembers([]);setBoard([]);setMessages([]);setSharedTasks([]);setTasks([]);setDone([]);setSubtaskDone([]);setTotalEarned(0);return;}
+  if(!ids.length){setCrews([]);setCrew(null);setMembers([]);setBoard([]);setMessages([]);setSharedTasks([]);setTasks([]);setDone([]);setSubtaskDone([]);setStreaks([]);setStreakChecks([]);setTotalEarned(0);return;}
   const {data:cs}=await client.from('crews').select('id,name,invite_code,start_date,days,penalty,penalty_custom').in('id',ids);
   const list=(cs||[]) as Crew[];setCrews(list);
   const selected=list.find(c=>c.id===activeCrewId)||list[0];if(!selected)return;
@@ -179,6 +231,7 @@ export default function App(){
   const {data:shared}=await client.from('shared_tasks').select('id,title,points,created_by,created_at,shared_proofs(id,user_id,photo_path,created_at,shared_proof_reviews(id,reviewer_id,approved,note))').eq('crew_id',selected.id).order('created_at',{ascending:false});
   if(shared){const enriched=await Promise.all(shared.map(async(t:any)=>({...t,shared_proofs:await Promise.all((t.shared_proofs||[]).map(async(p:any)=>{const {data}=await client.storage.from('proofs').createSignedUrl(p.photo_path,3600);return {...p,signedUrl:data?.signedUrl||null,reviews:p.shared_proof_reviews||[]};}))})));setSharedTasks(enriched);}
   await refreshStats(selected.id,userId);
+  await loadStreaks(selected.id);
  };
  useEffect(()=>{loadCrew();},[userId,activeCrewId]);
  useEffect(()=>{if(!supabase||!crew)return;const ch=supabase.channel('crew-'+crew.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'crew_id=eq.'+crew.id},p=>setMessages(old=>old.some(m=>m.id===(p.new as Msg).id)?old:[...old,p.new as Msg])).subscribe();return()=>{supabase?.removeChannel(ch);};},[crew?.id]);
@@ -514,7 +567,7 @@ export default function App(){
  </>;
  const screen=tab==='Home'?<Home/>:tab==='Stats'?<Stats/>:tab==='Crew'?<CrewView/>:<Settings/>;
  if(loading)return <SafeAreaView style={{flex:1,backgroundColor:C.bg,alignItems:'center',justifyContent:'center'}}><ActivityIndicator color={C.accent}/><Text style={{color:C.muted,marginTop:12}}>Preparing your challenge...</Text></SafeAreaView>;
- return <SafeAreaView style={{flex:1,backgroundColor:C.bg}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{screen}</ScrollView><View style={[styles.nav,{backgroundColor:C.card,borderColor:C.line}]}>{(['Home','Stats','Crew','Settings'] as Tab[]).map((t,i)=><TouchableOpacity key={t} accessibilityRole="button" accessibilityLabel={t} onPress={()=>setTab(t)} style={[styles.navItem,{backgroundColor:tab===t?C.accent:'transparent'}]}><Ionicons name={((['home','stats-chart','people','settings'] as const)[i]) as any} size={23} color={tab===t?C.accentInk:C.muted}/><Text style={{fontSize:11,fontWeight:'900',color:tab===t?C.accentInk:C.muted}}>{t}</Text></TouchableOpacity>)}</View>{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
+ return <SafeAreaView style={{flex:1,backgroundColor:C.bg}}><StatusBar barStyle={isLight?'dark-content':'light-content'}/><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{paddingHorizontal:19,paddingTop:12,paddingBottom:125}}>{screen}</ScrollView><FloatingTabBar active={tab} onChange={k=>setTab(k as Tab)} colors={{card:C.card,line:C.line,accent:C.accent,accentInk:C.accentInk,muted:C.muted}} tabs={[{key:'Home',label:'Home',icon:'home-outline',iconActive:'home'},{key:'Stats',label:'Stats',icon:'stats-chart-outline',iconActive:'stats-chart'},{key:'Crew',label:'Crew',icon:'people-outline',iconActive:'people'},{key:'Settings',label:'Settings',icon:'settings-outline',iconActive:'settings'}]}/>{notice!==''&&<View style={[styles.toast,{backgroundColor:C.fg}]}><Text style={{color:C.bg,fontWeight:'800'}}>{notice}</Text></View>}
  <Modal visible={showDays} animationType="slide" transparent onRequestClose={()=>setShowDays(false)}>
   <View style={styles.scrim}><View style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'90%'}]}>
    <View style={styles.sheetHead}><View><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>Your challenge days</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>Choose a day to view its personal tasks</Text></View><TouchableOpacity onPress={()=>setShowDays(false)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
@@ -527,6 +580,20 @@ export default function App(){
    <ScrollView keyboardShouldPersistTaps="handled" style={{flexGrow:0,maxHeight:390}}>
     {tasks.length?tasks.map(t=><TaskRow key={t.id} task={t}/>):<Text style={{color:C.muted,fontSize:12,textAlign:'center',padding:18}}>No personal tasks have been added to this crew yet.</Text>}
    </ScrollView>
+   <View style={{marginTop:12}}>
+    <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+     <View style={{flexDirection:'row',alignItems:'center',gap:7}}><Ionicons name="flame" size={19} color={C.flame}/><Text style={{color:C.fg,fontWeight:'900'}}>Streaks</Text><Text style={{color:C.muted,fontSize:10}}>no points</Text></View>
+     <TouchableOpacity onPress={openStreakEditor}><Text style={{color:C.accent,fontWeight:'900',fontSize:12}}>Add +</Text></TouchableOpacity>
+    </View>
+    <ScrollView keyboardShouldPersistTaps="handled" style={{flexGrow:0,maxHeight:190}}>
+     {streaks.length?streaks.map(st=>{const on=streakChecks.some(c=>c.streak_id===st.id&&c.day===day);const run=streakRun(st.id);return <Pressable key={st.id} onPress={()=>toggleStreak(st)} onLongPress={()=>deleteStreak(st)} delayLongPress={450} style={[styles.task,{backgroundColor:C.card,borderColor:C.line}]}>
+      <View style={{width:29,height:29,borderRadius:9,backgroundColor:C.card2,alignItems:'center',justifyContent:'center'}}><Ionicons name={st.icon as any} size={19} color={on?C.accent:C.muted}/></View>
+      <View style={[styles.check,{borderColor:on?C.accent:C.muted,backgroundColor:on?C.accent:'transparent'}]}>{on&&<Ionicons name="checkmark" size={16} color={C.accentInk}/>}</View>
+      <View style={{flex:1}}><Text style={{color:on?C.muted:C.fg,fontWeight:'800'}}>{st.title}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>{run} day streak · {streakWeek(st.id,day)}{st.weekly_target?'/'+st.weekly_target:''} this week · Hold to delete</Text></View>
+      <Ionicons name="flame" size={18} color={run>0?C.flame:C.muted}/>
+     </Pressable>;}):<Text style={{color:C.muted,fontSize:12,textAlign:'center',padding:12}}>Track habits like shower, prayer or gaming. They never give points.</Text>}
+    </ScrollView>
+   </View>
    <TouchableOpacity style={[styles.cta,{backgroundColor:C.accent}]} onPress={()=>setShowDays(false)}><Text style={{color:C.accentInk,fontWeight:'900'}}>Done</Text></TouchableOpacity>
   </View></View>
  </Modal>
@@ -548,9 +615,16 @@ export default function App(){
  <Modal visible={modal!==null} animationType="slide" transparent onRequestClose={()=>setModal(null)}>
   <Pressable style={styles.scrim} onPress={()=>setModal(null)}>
    <Pressable style={[styles.sheet,{backgroundColor:C.bg,maxHeight:'90%'}]} onPress={()=>{}}>
-    <View style={styles.sheetHead}><View style={{flex:1}}><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>{modal==='task'?(activeTask?'Edit personal task':'New personal task'):modal==='create'?'Create a crew':modal==='join'?'Join a crew':modal==='account'?'Account & recovery':modal==='report'?'Report a member':'Privacy & moderation'}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>SONIUM · Make today count</Text></View><TouchableOpacity onPress={()=>setModal(null)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
+    <View style={styles.sheetHead}><View style={{flex:1}}><Text style={{color:C.fg,fontSize:19,fontWeight:'900'}}>{modal==='streak'?'New streak':modal==='task'?(activeTask?'Edit personal task':'New personal task'):modal==='create'?'Create a crew':modal==='join'?'Join a crew':modal==='account'?'Account & recovery':modal==='report'?'Report a member':'Privacy & moderation'}</Text><Text style={{color:C.muted,fontSize:10,marginTop:3}}>SONIUM · Make today count</Text></View><TouchableOpacity onPress={()=>setModal(null)}><Ionicons name="close" size={24} color={C.fg}/></TouchableOpacity></View>
     <ScrollView keyboardShouldPersistTaps="handled" style={{flexGrow:0}}>
-     {modal==='task'?<>
+     {modal==='streak'?<>
+      <Text style={{color:C.muted,fontSize:11,marginBottom:6}}>STREAK NAME · NO POINTS</Text>
+      <TextInput value={streakTitle} onChangeText={setStreakTitle} maxLength={40} placeholder="e.g. Shower" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line}]}/>
+      <View style={{flexDirection:'row',flexWrap:'wrap',gap:7,marginTop:10}}>{STREAK_IDEAS.map(i=><TouchableOpacity key={i.title} onPress={()=>{setStreakTitle(i.title);setStreakIcon(i.icon);}} style={[styles.smallBtn,{backgroundColor:streakTitle===i.title?C.accent:C.card2}]}><Text style={{color:streakTitle===i.title?C.accentInk:C.fg,fontSize:11,fontWeight:'800'}}>{i.title}</Text></TouchableOpacity>)}</View>
+      <Text style={{color:C.muted,fontSize:11,marginTop:13,marginBottom:6}}>WEEKLY TARGET · 0–7 (0 = every day, no target)</Text>
+      <TextInput value={streakTarget} onChangeText={setStreakTarget} keyboardType="number-pad" placeholder="0" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line}]}/>
+      <TouchableOpacity onPress={saveStreak} style={[styles.cta,{backgroundColor:C.accent}]}><Text style={{color:C.accentInk,fontWeight:'900'}}>Add streak</Text></TouchableOpacity>
+     </>:modal==='task'?<>
       <Text style={{color:C.muted,fontSize:11,marginBottom:6}}>TASK NAME</Text>
       <TextInput value={taskTitle} onChangeText={setTaskTitle} maxLength={80} placeholder="e.g. Read 20 minutes" placeholderTextColor={C.muted} style={[styles.input,{color:C.fg,backgroundColor:C.card,borderColor:C.line}]}/>
       <Text style={{color:C.muted,fontSize:11,marginTop:12,marginBottom:6}}>DESCRIPTION (OPTIONAL)</Text>
