@@ -31,10 +31,15 @@
         "POST_NOTIFICATIONS",
         "VIBRATE",
         "RECEIVE_BOOT_COMPLETED"
-      ]
+      ],
+      "softwareKeyboardLayoutMode": "resize"
     },
     "experiments": {
       "typedRoutes": true
+    },
+    "androidStatusBar": {
+      "translucent": false,
+      "backgroundColor": "#0C0C0C"
     }
   }
 }
