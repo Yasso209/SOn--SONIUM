@@ -3,7 +3,7 @@
     "name": "SONIUM",
     "slug": "sonium",
     "scheme": "sonium",
-    "version": "0.1.0",
+    "version": "0.2.0",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
@@ -26,7 +26,7 @@
     ],
     "android": {
       "package": "com.yassinmohamed.sonium",
-      "versionCode": 2,
+      "versionCode": 3,
       "permissions": [
         "POST_NOTIFICATIONS",
         "VIBRATE",
